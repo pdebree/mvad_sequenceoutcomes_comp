@@ -1,36 +1,68 @@
 # Functions for Sequence Outcome Prediction Work - CFDA Competition, Linear and Non-Linear
 
-# assigns a cluster based on a sequence (with similarity matrix) - for hard clustering
-assign_new <- function(dist_mat,train_idx,train.clust,test_idx) {
-  #spread out the clusters and assign fake label to test set
-  len <- length(train_idx) #boolean vector
-  clusts <- rep(0,len) #unassigned label (default)
-  clusts[train_idx] <- train.clust # assigned labels (with 0 being the new data)
-  dist2clust <- apply(dist_mat,1,function(x,cl) {tapply(x,cl,mean)},cl=clusts)  
-  newClusts <- apply(dist2clust[-1,],2,which.min) #drop first row - these were the unassigned cluster
-  return(newClusts[test_idx])
+create_dists <- function(data.seq) {
+  # Creates a substition cost matrix, using Transition Rate (T-Rate) -  which gets the substitution costs from 
+  # the transition probabilities from all pairs of states (higher probability means
+  # lower cost). Here we just use it to get the size of a substitution matrix quickly 
+  submat   <- seqsubm(data.seq, method= "TRATE")
+  submat.2 <- submat
+  submat.2[] <- 1
+  diag(submat.2) <- 0
+  
+  # OM - T-RATE - Simply use the transition rates between each state. 
+  dist.om <- seqdist(data.seq, method="OM",indel = 1, sm = submat, with.missing = TRUE)
+  
+  # LCS
+  dist.lcs <- seqdist(data.seq, method="LCS")
+  dists <- list(`OM-trate`=dist.om,`LCS`=dist.lcs)
+  
+  return(dists)
 }
 
+
+# Assigns a hard cluster based on a sequence (with similarity matrix) 
+assign_new <- function(dist_mat,train_idx,train.clust,test_idx) {
+  
+  #spread out the clusters and assign fake label to test set
+  len <- length(train_idx) #boolean vector
+  clusts <- rep(0,len) 
+  
+  clusts[train_idx] <- train.clust # assigned labels (with 0 being the new data)
+  
+  dist2clust <- apply(dist_mat,1,function(x,cl) {tapply(x,cl,mean)},cl=clusts)  
+  
+  newClusts <- apply(dist2clust[-1,],2,which.min) #drop first row (unassigned cluster)
+  
+  return(newClusts[test_idx])
+  
+}
+
+# Assigns soft cluster membership probabilities 
 assign_new_fanny <- function(dist_mat,train.idx,train.memb,test.idx,memb.exp=1.5,n.draws=300,prior.n.equiv=100) {
   
   len <- length(train.idx) # all members 
   simmat <- 1-dist_mat/max(dist_mat) # all similarities 
   test_locs <- (1:len)[test.idx] # indices of test locations
-  train.memb <- as.matrix(train.memb) # train membership (in cluster) probabilities (ncol = nclusters)
+  
+  train.memb <- as.matrix(train.memb) # train membership (in cluster) probabilities 
   K <- ncol(train.memb) # number of clusters 
-  M <- length(test_locs) #number of new obs to assign
-  test.memb <- matrix(NA,M,K) # empty matrix ready for probability of each test point in each cluster (ncol)
+  M <- length(test_locs) # number of new obs to assign
+  test.memb <- matrix(NA,M,K) # empty membership probability matrix 
   
   for (i in seq_along(test_locs)) {
+    
     sim.i <- simmat[test_locs[i],train.idx] # similarities of ith test row with all training data points
     sim.i <- sim.i/sum(sim.i) # relative similarity (along row)
-    wtd.memb <- sim.i%*%train.memb # essentially "weighing" training cluster memberships by the test similarities 
+    wtd.memb <- sim.i%*%train.memb # essentially "weighing" test similarities by training cluster memberships 
     
-    # pull dirichlet draws
+    # pull dirichlet draws based on weighted memberships to get probabilites 
     u.prop <- gtools::rdirichlet(n.draws,prior.n.equiv*wtd.memb) # n.draws - make 200
     d.i <- dist_mat[test_locs[i],train.idx,drop=F] # distance values to each train point
+    
     numer <- d.i%*%(train.memb^memb.exp)%*%t(u.prop^memb.exp) 
     denom <- apply(u.prop^memb.exp,1,sum) #only relevant terms
+    
+    # use draw that minimizes 
     min.loc <- which.min(numer/denom)
     test.memb[i,] <- u.prop[min.loc,]
     
@@ -41,6 +73,7 @@ assign_new_fanny <- function(dist_mat,train.idx,train.memb,test.idx,memb.exp=1.5
 
 # soft clust assign probs based on medoids (FKM.med):
 pred.fclust <- function(dist2med,m=1.5) {
+  
   # Handle the 'Distance = 0' edge case 
   eps <- 1e-10
   dist2med[dist2med==0] <- eps
@@ -83,9 +116,9 @@ train_test_lm_clust_hard <- function(clustering, dists, nClusts, dat, Y.cont, tr
   
   
   preds.train <- predict(fit.lm)
-  train.rmse <- sqrt(sum((preds.train - Y.cont[train_idx])^2)/nrow(train_dat.cont))
+  #train.rmse <- sqrt(sum((preds.train - Y.cont[train_idx])^2)/nrow(train_dat.cont))
   
-  return(list(rmse=rmse,fit.lm=fit.lm, train.rmse=train.rmse))
+  return(rmse)
   
   
   
@@ -116,9 +149,9 @@ train_test_lm_clust_soft <- function(dist_matrix, nClusts, dat, Y.cont, train_id
   
   
   preds.train <- predict(fit.lm)
-  train.rmse <- sqrt(sum((preds.train - Y.cont[train_idx])^2)/nrow(train_dat.cont))
+  #train.rmse <- sqrt(sum((preds.train - Y.cont[train_idx])^2)/nrow(train_dat.cont))
   
-  return(list(rmse=rmse,fit.lm=fit.lm, train.rmse=train.rmse))
+  return(rmse)
   
 }
 
@@ -129,9 +162,10 @@ train_test_lm_clust_soft_fkmmed <- function(dist_matrix, nClusts, dat, Y.cont, t
    
   fcl <- FKM.med(as.dist(dist_matrix[train_idx, train_idx]),k=nClusts,m=m,RS=RS)
   
-  # old way 
-  #train.memb <- fcl$U 
   
+  train.memb <- fcl$U 
+  
+  # tried this - different outcomes - not sure why  
   train.memb <- pred.fclust(dist_matrix[train_idx,fcl$medoid])
   
   # pull medoids from fit to "predict" test set cluster memberships (based on training medoids)
@@ -156,16 +190,11 @@ train_test_lm_clust_soft_fkmmed <- function(dist_matrix, nClusts, dat, Y.cont, t
   preds.cont <- predict(fit.lm, newdata = test_dat.cont)
   
   rmse <- sqrt(sum((preds.cont - Y.cont[test_idx])^2)/nrow(test_dat.cont))
-  train.rmse <- sqrt(sum((preds.train - Y.cont[train_idx])^2)/nrow(train_dat.cont))
+  #train.rmse <- sqrt(sum((preds.train - Y.cont[train_idx])^2)/nrow(train_dat.cont))
   
-  return(list(rmse=rmse,fit.lm=fit.lm, train.rmse=train.rmse))
+  return(rmse)
 
 }
-
-
-
-
-
 
 
 
@@ -201,7 +230,7 @@ train_test_lm_comps_mets <- function(train_dat, test_dat, Y.cont, Y.bin, train_i
   list(rmse=rmse,fit.lm=fit.lm)
 }
 
-train_test_lm_clust_hard_seq <- function(clustering, dists, nClusts, dat, Y.cont, train_idx,test_idx,train_seq_pcs, test_seq_pcs) {
+train_test_lm_clust_hard_seq <- function(clustering, dist_matrix, nClusts, dat, Y.cont, train_idx,test_idx,train_seq_pcs, test_seq_pcs) {
   cut1 <- cutree(clustering,k=nClusts)
   clust1.fac <- factor(cut1)
   
@@ -210,7 +239,7 @@ train_test_lm_clust_hard_seq <- function(clustering, dists, nClusts, dat, Y.cont
   
   if (nClusts==1) {
     cut2 <- rep(1,sum(test_idx)) #the trivial cluster
-  } else cut2 <- assign_new(dists,train_idx,cut1,test_idx)
+  } else cut2 <- assign_new(dist_matrix,train_idx,cut1,test_idx)
   
   clust2.fac <- factor(cut2)
   
@@ -229,13 +258,13 @@ train_test_lm_clust_hard_seq <- function(clustering, dists, nClusts, dat, Y.cont
   list(rmse=rmse,fit.lm=fit.lm)
 }
 
-train_test_lm_clust_soft_seq <- function(dists, nClusts, dat, Y.cont, train_idx,test_idx, fuzziness=2, train_seq_pcs, test_seq_pcs) {
+train_test_lm_clust_soft_seq <- function(dist_matrix, nClusts, dat, Y.cont, train_idx,test_idx, fuzziness=2, train_seq_pcs, test_seq_pcs) {
   
-  clustering <- fanny(dists[train_idx, train_idx], k=nClusts, memb.exp=fuzziness, diss=TRUE,maxit = 1000)
+  clustering <- fanny(dist_matrix[train_idx, train_idx], k=nClusts, memb.exp=fuzziness, diss=TRUE,maxit = 1000)
   
   train.memb <- clustering$membership
   
-  test.memb <- assign_new_soft(dist_mat=dists,train.idx=train_idx, train.memb=train.memb,
+  test.memb <- assign_new_fanny(dist_mat=dist_matrix,train.idx=train_idx, train.memb=train.memb,
                                test.idx=test_idx, memb.exp=fuzziness,n.draws=200,prior.n.equiv=100) 
   
   if (nClusts == 2) {
@@ -300,7 +329,7 @@ soft_cluster <- function(dist_matrix,train_idx,test_idx, nClusts, fuzziness=1.5,
                            k=nClusts, memb.exp=fuzziness, diss=TRUE, maxit = 1000)
   
   train.memb <- clustering_soft$membership
-  test.memb <- assign_new_soft(dist_mat=dist_matrix,train.idx=train_idx, train.memb=train.memb, 
+  test.memb <- assign_new_fanny(dist_mat=dist_matrix,train.idx=train_idx, train.memb=train.memb, 
                                test.idx=test_idx,memb.exp=fuzziness,n.draws=200,
                                prior.n.equiv=100) 
   
@@ -345,5 +374,41 @@ plot_comps_mtry <- function(fold_means, comp_lab){
     scale_color_discrete(breaks = seq(1,11, 1))
   
 }
+
+calc_mse <- function(preds, y_dat) {
+  return(sum((preds - y_dat)^2)/length(y_dat))
+  
+}
+
+# CHANGE THIS
+fit_linear_train_test <- function(train_data, test_data) {
+  fit.lin <- lm(y~., data=train_data) 
+  preds.lin <- predict(fit.lin, newdata = test_data) 
+  mse.lin_test <- calc_mse(preds.lin, y_dat=test_data[,"y"]) 
+  
+  preds.lin_train <- predict(fit.lin, newdata = train_data) 
+  mse.lin_train <- calc_mse(preds.lin_train, y_dat=train_data[,"y"]) 
+    
+  
+  output <- list()
+  output$train <- mse.lin_train
+  output$test <- mse.lin_test
+  return(output)
+  
+}
+
+fit_linear <- function(train_data, test_data) {
+  fit.lin <- lm(y~., data=train_data) 
+  preds.lin <- predict(fit.lin, newdata = test_data) 
+  mse.lin <- calc_mse(preds.lin, y_dat=test_data[,"y"]) 
+
+  return(mse.lin)
+  
+}
+
+
+
+
+
 
 
