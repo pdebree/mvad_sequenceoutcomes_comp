@@ -332,8 +332,6 @@ rmse_long <- rmse.frame %>%
     values_to = "RMSE"      # New column for the values
   )
 
-
-pdf("LinearCompPlot.pdf",width=9,height=7)
 ggplot(data = rmse_long, 
        aes(x = Index, y = RMSE, color = Method)) +
   geom_line(linewidth = 1) +
@@ -343,8 +341,9 @@ ggplot(data = rmse_long,
        y = "RMSE Value",
        color = "Method") +
   theme_minimal()
-dev.off()
+
 
 write.csv(rmse.frame, "LinearCompetitionRMSE.csv", row.names=FALSE)
+pdf("LinearCompPlot.pdf",width=8,height=6)
 
 

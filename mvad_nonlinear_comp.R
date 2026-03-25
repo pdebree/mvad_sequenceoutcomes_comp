@@ -376,7 +376,7 @@ best.rmse <- data.frame(matrix(NA, nrow = nClusts, ncol = 1))
 colnames(best.rmse) <- c("seq_soft")
 best.rmse$seq_soft <- c(NA, best_soft_seq$RMSE, rep(NA, nClusts-nSoftClusts))
 best.rmse$seq_hard <- c(NA, best_hard_seq$RMSE)
-best.rmse$cfda <- c(NA, best_harms$RMSE)
+best.rmse$cfda <- best_harms$RMSE
 best.rmse$windows <- c(best_windows$RMSE, rep(NA, nClusts - nWindows))
 best.rmse$om_hard <- c(NA, best_om_hard$RMSE)
 best.rmse$om_soft <- c(NA, best_om_soft$RMSE, rep(NA, nClusts-nSoftClusts))
@@ -405,7 +405,7 @@ ggplot(data = best.rmse_long,
        x = "Components/Clusters",
        y = "RMSE Value",
        color = "Method") +
-  scale_color_discrete(labels = c(cfda = "CFDA", lcs_hard = "Hard Clusters (LCS)", lcs_soft = "Hard Clusters (LCS)", om_hard="Hard Clusters (OM-TRate)", om_soft="Soft Clusters (OM-Trate)",  seq_hard="Hard Clusters + 9 Sequence Metric PCs", seq_soft="Soft Clusters + 9 Sequence Metric PCs", windows="Windows")) + theme_minimal()
+  scale_color_discrete(labels = c(cfda = "CFDA", lcs_hard = "Hard Clusters (LCS)", lcs_soft = "Soft Clusters (LCS)", om_hard="Hard Clusters (OM-TRate)", om_soft="Soft Clusters (OM-Trate)",  seq_hard="Hard Clusters + 9 Sequence Metric PCs", seq_soft="Soft Clusters + 9 Sequence Metric PCs", windows="Windows")) + theme_minimal()
 dev.off()
 
 write.csv(best.rmse, "NonLinearCompetitionRMSE.csv", row.names=FALSE)
