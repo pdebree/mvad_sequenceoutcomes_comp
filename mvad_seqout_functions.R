@@ -26,6 +26,8 @@ create_dists <- function(data.seq) {
 }
 
 
+
+
 # Assigns a hard cluster based on a sequence (with similarity matrix) 
 assign_new <- function(dist_mat,train_idx,train.clust,test_idx) {
   
@@ -118,21 +120,14 @@ train_test_lm_clust_hard <- function(clustering, dists, nClusts, dat, Y.cont, tr
   }
   
   preds.cont <- predict(fit.lm, newdata = test_dat.cont) 
-  rmse <- sqrt(sum((preds.cont - Y.cont[test_idx])^2)/nrow(test_dat.cont))
+  mse <- sum((preds.cont - Y.cont[test_idx])^2)/nrow(test_dat.cont)
   
-  
-  preds.train <- predict(fit.lm)
-  #train.rmse <- sqrt(sum((preds.train - Y.cont[train_idx])^2)/nrow(train_dat.cont))
-  
-  return(rmse)
-  
-  
+  return(mse)
   
 }
 
 train_test_lm_clust_soft <- function(dist_matrix, nClusts, dat, Y.cont, train_idx,test_idx, fuzziness=1.5) {
   
-  #
   
   clustering <- fanny(dist_matrix[train_idx, train_idx], k=nClusts, memb.exp=fuzziness, diss=TRUE,maxit = 1000)
   
@@ -151,13 +146,16 @@ train_test_lm_clust_soft <- function(dist_matrix, nClusts, dat, Y.cont, train_id
   fit.lm <- lm(Y~., data=train_dat.cont)
   
   preds.cont <- predict(fit.lm, newdata = test_dat.cont)
-  rmse <- sqrt(sum((preds.cont - Y.cont[test_idx])^2)/nrow(test_dat.cont))
+  mse <- sum((preds.cont - Y.cont[test_idx])^2)/nrow(test_dat.cont)
   
   
   preds.train <- predict(fit.lm)
-  #train.rmse <- sqrt(sum((preds.train - Y.cont[train_idx])^2)/nrow(train_dat.cont))
   
-  return(rmse)
+  output <- list()
+  output$mse <- mse
+  output$converged <- clustering$convergence["converged"] == 1
+
+  return(output)
   
 }
 
@@ -195,10 +193,9 @@ train_test_lm_clust_soft_fkmmed <- function(dist_matrix, nClusts, dat, Y.cont, t
   # predict test data
   preds.cont <- predict(fit.lm, newdata = test_dat.cont)
   
-  rmse <- sqrt(sum((preds.cont - Y.cont[test_idx])^2)/nrow(test_dat.cont))
-  #train.rmse <- sqrt(sum((preds.train - Y.cont[train_idx])^2)/nrow(train_dat.cont))
+  mse <- sum((preds.cont - Y.cont[test_idx])^2)/nrow(test_dat.cont)
   
-  return(rmse)
+  return(mse)
 
 }
 
@@ -216,9 +213,9 @@ train_test_lm_comps <- function(dat, Y.cont, Y.bin, train_idx, test_idx, end_col
   fit.lm <- lm(Y~., data=train_dat.cont)
   
   preds.cont <- predict(fit.lm, newdata = test_dat.cont) 
-  rmse <- sqrt(sum((preds.cont - Y.cont[test_idx])^2)/nrow(test_dat.cont))
+  mse <- sum((preds.cont - Y.cont[test_idx])^2)/nrow(test_dat.cont)
   
-  list(rmse=rmse,fit.lm=fit.lm)
+  list(mse=mse,fit.lm=fit.lm)
 }
 
 
@@ -231,9 +228,9 @@ train_test_lm_comps_mets <- function(train_dat, test_dat, Y.cont, Y.bin, train_i
   fit.lm <- lm(Y~., data=train_dat.cont)
   
   preds.cont <- predict(fit.lm, newdata = test_dat.cont) 
-  rmse <- sqrt(sum((preds.cont - Y.cont[test_idx])^2)/nrow(test_dat.cont))
+  mse <- sum((preds.cont - Y.cont[test_idx])^2)/nrow(test_dat.cont)
   
-  list(rmse=rmse,fit.lm=fit.lm)
+  list(mse=mse,fit.lm=fit.lm)
 }
 
 train_test_lm_clust_hard_seq <- function(clustering, dist_matrix, nClusts, dat, Y.cont, train_idx,test_idx,train_seq_pcs, test_seq_pcs) {
@@ -260,8 +257,8 @@ train_test_lm_clust_hard_seq <- function(clustering, dist_matrix, nClusts, dat, 
   }
   
   preds.cont <- predict(fit.lm, newdata = test_dat.cont) 
-  rmse <- sqrt(sum((preds.cont - Y.cont[test_idx])^2)/nrow(test_dat.cont))
-  list(rmse=rmse,fit.lm=fit.lm)
+  mse <- sum((preds.cont - Y.cont[test_idx])^2)/nrow(test_dat.cont)
+  list(mse=mse,fit.lm=fit.lm)
 }
 
 train_test_lm_clust_soft_seq <- function(dist_matrix, nClusts, dat, Y.cont, train_idx,test_idx, fuzziness=2, train_seq_pcs, test_seq_pcs) {
@@ -284,9 +281,9 @@ train_test_lm_clust_soft_seq <- function(dist_matrix, nClusts, dat, Y.cont, trai
   fit.lm <- lm(Y~., data=train_dat.cont)
   
   preds.cont <- predict(fit.lm, newdata = test_dat.cont)
-  rmse <- sqrt(sum((preds.cont - Y.cont[test_idx])^2)/nrow(test_dat.cont))
+  mse <- sum((preds.cont - Y.cont[test_idx])^2)/nrow(test_dat.cont)
   
-  return(list(rmse=rmse,fit.lm=fit.lm))
+  return(list(mse=mse,fit.lm=fit.lm))
 }
 
 
@@ -299,10 +296,10 @@ train_test_lm_clust_soft_seq <- function(dist_matrix, nClusts, dat, Y.cont, trai
 
 
 
-train_rmse_rf <- function(train_data, test_data, mtry) {
+train_mse_rf <- function(train_data, test_data, mtry) {
  
   # fit with hard clusters 
-  fit.rf<- ranger(num_month_em_last_year ~ .,
+  fit.rf <- ranger(num_month_em_last_year ~ .,
                         data = train_data,
                         num.trees = 1000, 
                         mtry = mtry,
@@ -311,7 +308,7 @@ train_rmse_rf <- function(train_data, test_data, mtry) {
 
   rf_pred <- predict(fit.rf, data = test_data)
   
-  return(sqrt(sum((preds <- rf_pred$predictions - test_data$num_month_em_last_year)^2)/ nrow(test_data)))
+  return(sum((preds <- rf_pred$predictions - test_data$num_month_em_last_year)^2)/ nrow(test_data))
   
 }
 
