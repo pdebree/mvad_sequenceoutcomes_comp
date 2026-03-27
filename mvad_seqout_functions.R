@@ -4,17 +4,23 @@ create_dists <- function(data.seq) {
   # Creates a substition cost matrix, using Transition Rate (T-Rate) -  which gets the substitution costs from 
   # the transition probabilities from all pairs of states (higher probability means
   # lower cost). Here we just use it to get the size of a substitution matrix quickly 
+  
+  # Calculate costs 
+  costs.data <- seqcost(data.seq, method = "INDELSLOG", with.missing = TRUE)
+
   submat   <- seqsubm(data.seq, method= "TRATE")
   submat.2 <- submat
   submat.2[] <- 1
   diag(submat.2) <- 0
   
   # OM - T-RATE - Simply use the transition rates between each state. 
-  dist.om <- seqdist(data.seq, method="OM",indel = 1, sm = submat, with.missing = TRUE)
-  
+  dist.om_trate <- seqdist(data.seq, method="OM", indel = 1, sm = submat, with.missing = TRUE)
   # LCS
   dist.lcs <- seqdist(data.seq, method="LCS")
-  dists <- list(`OM-trate`=dist.om,`LCS`=dist.lcs)
+  # OM - SLOG 
+  dist.om_slog <- seqdist(data.seq, method="OM", indel = costs.data$indel, sm = costs.data$sm, with.missing = TRUE)
+
+  dists <- list(`OM-trate`=dist.om_trate,`LCS`=dist.lcs, `OM-slog`=dist.om_slog)
   
   return(dists)
 }
