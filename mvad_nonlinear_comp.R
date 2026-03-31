@@ -562,7 +562,7 @@ lcs_soft_means_rf <- sqrt(apply(lcs_soft_rf_min , 2, mean))
 rmse.frame <- data.frame(matrix(NA, nrow = 25, ncol = 8))
 colnames(rmse.frame) <- c("OM T-Rate (Hard)", "OM T-Rate (Soft)", "OM INDELSLOG (Hard)", "OM INDELSLOG (Soft)", "LCS (Hard)", "LCS (Soft)", "Windows", "CFDA")
 
-rmse.frame["OM T-Rate (Hard)"] <- c(NA, om_hard_means_rf[2:nClusts])
+rmse.frame["OM T-Rate (Hard)"] <- c(NA, om_hard_trate_means_rf[2:nClusts])
 rmse.frame["OM T-Rate (Soft)"] <- c(NA, om_trate_soft_means_rf[2:nSoftClusts])
 rmse.frame["OM INDELSLOG (Hard)"] <- c(NA, om_slog_hard_means_rf[2:nClusts])
 rmse.frame["OM INDELSLOG (Soft)"] <- c(NA, om_slog_soft_means_rf[2:nSoftClusts])
