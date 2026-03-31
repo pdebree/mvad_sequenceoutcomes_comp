@@ -1,7 +1,6 @@
 # CFDA Linear Competition 
 # First written for Supervised and Unsupervised Machine Learning Practicum in January 2026
 
-
 library(TraMineR)
 library(TraMineRextras)
 library(cluster)
@@ -15,6 +14,7 @@ library(gt)
 library(dplyr)
 
 source("mvad_seqout_functions.R")
+set.seed(11)
 
 
 # Data Load in 
@@ -28,7 +28,6 @@ mvad.seq <- seqdef(mvad, 15:50, states=mvad.scodes, labels=mvad.labels)
 
 # Creates distance matrix 
 dists <- create_dists(data.seq=mvad.seq)
-
 
 # Training set up 
 folds <-  5
@@ -48,23 +47,26 @@ mvad_last_year <- mvad[,75:86]
 num_month_em_last_year <- apply(mvad_last_year, 1, function(x) length(which(x=="employment")))
 mvad_covars <- mvad[3:14] %>% dplyr::select(-Western) #reference group
 
-maxMtry <- 11
 nWindows <- 16 
-nClusts <- 25 
-nSoftClusts <- 14 
+nClusts <- 25
+nSoftClusts <- 13
 nHarms <- 25
-
+nCovars <- ncol(mvad_covars)
+nSeqPcs <- 12
+fuzz_soft <- 1.5
 
 
 # Arrays for holding outcomes fits 
-rmse.cv.harm_rf <- array(NA,c(folds,nHarms, maxMtry))
-rmse.cv.windows_rf <- array(NA,c(folds,nWindows,maxMtry))
-rmse.cv.om_hard_rf <- array(NA,c(folds,nClusts,maxMtry))
-rmse.cv.om_soft_rf <- array(NA,c(folds,nSoftClusts,maxMtry))
-rmse.cv.lcs_hard_rf <- array(NA,c(folds,nClusts,maxMtry))
-rmse.cv.lcs_soft_rf <- array(NA,c(folds,nSoftClusts,maxMtry))
-rmse.cv.om_seq_hard <- array(NA,c(folds,nClusts,maxMtry))
-rmse.cv.om_seq_soft <- array(NA,c(folds,nSoftClusts,maxMtry))
+mse.cv.harm_rf <- array(NA,c(folds,nHarms, nCovars + nHarms))
+mse.cv.windows_rf <- array(NA,c(folds,nWindows, nCovars + nWindows))
+mse.cv.om_trate_hard_rf <- array(NA,c(folds,nClusts, nCovars + 1))
+mse.cv.om_trate_soft_rf <- array(NA,c(folds,nSoftClusts,nCovars + nSoftClusts - 1))
+mse.cv.om_slog_hard_rf <- array(NA,c(folds,nClusts, nCovars + 1))
+mse.cv.om_slog_soft_rf <- array(NA,c(folds,nSoftClusts, nCovars + nSoftClusts - 1))
+mse.cv.lcs_hard_rf <- array(NA,c(folds,nClusts, nCovars + 1))
+mse.cv.lcs_soft_rf <- array(NA,c(folds,nSoftClusts, nCovars + nSoftClusts - 1))
+mse.cv.rmets_rf <- array(NA,c(folds, nSeqPcs, nCovars + nSeqPcs))
+
 
 ### CFDA Cross Validation 
 
@@ -108,7 +110,7 @@ for (i in 1:folds) {
   colnames(pcs.test) <- paste0("PC",1:nComps)
 
   for (j in 1:nHarms) {
-    for (k in 1:maxMtry) {
+    for (k in 1:(nCovars + j)) {
         # create training set based on number of PCs to include
       train_harm <- mvad_covars[train_idx, ] %>% 
         add_column(as_tibble(pcs.train[, 1:j, drop = FALSE])) %>% 
@@ -117,7 +119,7 @@ for (i in 1:folds) {
         add_column(as_tibble(pcs.test[, 1:j, drop = FALSE])) %>% 
         mutate(num_month_em_last_year = num_month_em_last_year[test_idx])
       if (k < ncol(train_harm) - 1) {
-        rmse.cv.harm_rf[i, j, k] <- train_rmse_rf(train_harm, test_harm, mtry =
+        mse.cv.harm_rf[i, j, k] <- train_mse_rf(train_harm, test_harm, mtry =
                                                     k)
       }
     }
@@ -169,8 +171,8 @@ for (i in 1:folds) {
   colnames(test_mvad_windows)[1] <- "num_month_em_last_year"
   
   for (j in 1:nWindows) {
-    for (k in 1:maxMtry) {
-      rmse.cv.windows_rf[i,j,k] <- train_rmse_rf(train_data=train_mvad_windows[,1:(12+j)], test_data = test_mvad_windows, mtry=k)
+    for (k in 1:(nCovars + j)) {
+      mse.cv.windows_rf[i,j,k] <- train_mse_rf(train_data=train_mvad_windows[,1:(12+j)], test_data = test_mvad_windows, mtry=k)
     }
   }
 }
@@ -179,8 +181,6 @@ for (i in 1:folds) {
 
 
 ## OM-TRATE
-
-
 # go through folds in repeat
 for (i in 1:folds) {
   cat("Fold Number ",i,"\n")
@@ -192,7 +192,6 @@ for (i in 1:folds) {
 
   # hard coded for OM-Trate
   for (j in 2:nClusts) {
-    
     # Create hard clusters
     hard_cluster_data <- hard_cluster(
       clusterward = clusterward_hard, nClusts=j, covars=mvad_covars, 
@@ -208,15 +207,68 @@ for (i in 1:folds) {
     train_om_soft <- soft_cluster_data$train_data
     test_om_soft <- soft_cluster_data$test_data
 
-    for (k in 1:maxMtry) {
-      rmse.cv.om_hard_rf[i,j,k] <- train_rmse_rf(train_data=train_om_hard, test_data=test_om_hard, mtry=k)
-      
-      if (j <= nSoftClusts) {
-        rmse.cv.om_soft_rf[i,j,k] <- train_rmse_rf(train_data=train_om_soft, test_data=test_om_soft, mtry=k)
+    for (k in 1:(nCovars + j - 1)) {
+
+      # k can only go to nCovars + 1 because hard clusters are in one factored variable
+      if (k <= (nCovars + 1)) {
+        mse.cv.om_trate_hard_rf[i,j,k] <- train_mse_rf(train_data=train_om_hard, test_data=test_om_hard, mtry=k)
+      }
+      # k is only evaluated for this j if the number of soft clusters is reached
+      if (j < nSoftClusts) {
+        mse.cv.om_trate_soft_rf[i,j,k] <- train_mse_rf(train_data=train_om_soft, test_data=test_om_soft, mtry=k)
       }
     }
   }
 }
+
+
+# OM - SLOG 
+# go through folds in repeat
+for (i in 1:folds) {
+  cat("Fold Number ",i,"\n")
+  test_idx <- idx == i
+  train_idx <- !test_idx
+
+  # create a agnes tree for the clusters, based on the 1st similarity matrix - HARD CODED FOR OM
+  clusterward_hard <- agnes(dists[[3]][train_idx,train_idx], diss=TRUE, method="ward")
+
+  # hard coded for OM-Trate
+  for (j in 2:nClusts) {
+    
+    # Create hard clusters
+    hard_cluster_data <- hard_cluster(
+      clusterward = clusterward_hard, nClusts=j, covars=mvad_covars, 
+      num_month_em_last_year = num_month_em_last_year, train_idx=train_idx, 
+      test_idx=test_idx, dist_matrix = dists[[3]])
+
+    train_om_hard <- hard_cluster_data$train_data
+    test_om_hard <- hard_cluster_data$test_data
+  
+    # Create soft clusters
+    soft_cluster_data <- soft_cluster(dist_matrix = dists[[3]], 
+      train_idx=train_idx, test_idx=test_idx, nClusts=j, covars=mvad_covars, 
+      num_month_em_last_year = num_month_em_last_year)
+
+    train_om_soft <- soft_cluster_data$train_data
+    test_om_soft <- soft_cluster_data$test_data
+
+    for (k in 1:(nCovars + j - 1)) {
+     
+      # we could have a large k but we still only have 12 columns (the cluster column is a factor of max 25 clusters)
+      if (k <= (nCovars + 1)) {
+        mse.cv.om_slog_hard_rf[i,j,k] <- train_mse_rf(train_data=train_om_hard, test_data=test_om_hard, mtry=k)
+      }
+      
+      # make sure we don't look at 25 columns (but we still want to look at mtry up to the number of soft clusters)
+      # because it has multiple columns (one for each cluster)
+      if (j < nSoftClusts) {
+        mse.cv.om_slog_soft_rf[i,j,k] <- train_mse_rf(train_data=train_om_soft, test_data=test_om_soft, mtry=k)
+      }
+    }
+  }
+}
+
+
 
 # LCS
 
@@ -241,11 +293,14 @@ for (i in 1:folds) {
     train_lcs_soft <- soft_cluster_data$train_data
     test_lcs_soft <- soft_cluster_data$test_data
     
-    for (k in 1:maxMtry) {
+    for (k in 1:(nCovars + j - 1)) {
 
-      rmse.cv.lcs_hard_rf[i,j,k] <- train_rmse_rf(train_data=train_lcs_hard, test_data=test_lcs_hard, mtry=k)
-      if (j <= nSoftClusts) {
-        rmse.cv.lcs_soft_rf[i,j,k] <- train_rmse_rf(train_data=train_lcs_soft, test_data=test_lcs_soft, mtry=k)
+      if (k <= (nCovars + 1)) {
+        mse.cv.lcs_hard_rf[i,j,k] <- train_mse_rf(train_data=train_lcs_hard, test_data=test_lcs_hard, mtry=k)
+      }
+
+      if (j < nSoftClusts) {
+        mse.cv.lcs_soft_rf[i,j,k] <- train_mse_rf(train_data=train_lcs_soft, test_data=test_lcs_soft, mtry=k)
       }
     }
   }
@@ -283,8 +338,7 @@ mvad_rmetrics <- mvad_states %>% mutate(
 
 # Training set up 
 rmetrics <- mvad_rmetrics[,37:48] 
-nSeqPcs <- ncol(rmetrics) - 1
-
+nSeqPcs <- ncol(rmetrics)
 
 # go through folds in repeat
 for (i in 1:folds) {
@@ -300,115 +354,249 @@ for (i in 1:folds) {
   train_scores <- pca_comps_train$x
   test_scores <- predict(pca_comps_train, newdata = test_seqmets) 
   
-  # create a agnes tree for the clusters, based on the 1st similarity matrix - HARD CODED FOR OM
-  clusterward_hard <- agnes(dists[[1]][train_idx,train_idx], diss=TRUE, method="ward")
-
-  # keep as matrices, for easier combination with covariate data 
-  train_k_scores <- train_scores[, 1:nSeqPcs, drop = FALSE]
-  test_k_scores <- test_scores[, 1:nSeqPcs, drop = FALSE]
+  for (j in 1:nSeqPcs) {
+    train_rmets <- cbind(num_month_em_last_year[train_idx], mvad_covars[train_idx,], train_scores[,1:j,drop = FALSE])
+    test_rmets <- cbind(num_month_em_last_year[test_idx], mvad_covars[test_idx,], test_scores[,1:j,drop = FALSE])
+  
+    colnames(train_rmets)[1] <- "num_month_em_last_year"
+    colnames(test_rmets)[1] <- "num_month_em_last_year"
     
-    for (j in 2:nClusts) {
-      
-      cluster_hard <- hard_cluster(clusterward = clusterward_hard, nClusts=j, covars=mvad_covars, num_month_em_last_year = num_month_em_last_year, train_idx=train_idx, test_idx = test_idx, dist_matrix = dists[[1]])
-      
-      train_om_hard <- cbind(cluster_hard$train_data, train_k_scores)
-      test_om_hard <- cbind(cluster_hard$test_data, test_k_scores) 
-      
-      if (j < 16) {
-      cluster_soft <- soft_cluster(
-        dist_matrix = dists[[1]],
-        train_idx = train_idx,
-        test_idx = test_idx,
-        nClusts = j,
-        covars = mvad_covars,
-        num_month_em_last_year = num_month_em_last_year)
-      
-      # add in scores data 
-      train_om_soft <- cbind(cluster_soft$train_data, train_k_scores)
-      test_om_soft <- cbind(cluster_soft$test_data, test_k_scores)
-      }
-      for (k in 1:maxMtry) {
-        rmse.cv.om_seq_hard[i,j,k] <- train_rmse_rf(
-          train_data=train_om_hard, test_data=test_om_hard, mtry=k)
-        if (j <= nSoftClusts) {
-          rmse.cv.om_seq_soft[i,j,k] <- train_rmse_rf(
-          train_data=train_om_soft, test_data=test_om_soft, mtry=k)
-        }
-      
+    for (k in 1:(nCovars + j)) {
+      mse.cv.rmets_rf[i,j,k] <- train_mse_rf(train_data=train_rmets, test_data=test_rmets, mtry=k)
     }
   }
 }
 
+# Find the minimum performance for each fold-cluster combination 
+# essentially this gets rid of all non-optimal performances (as meausured by mtry)
+seq_mets_mins <- apply(mse.cv.rmets_rf, c(1, 2), min, na.rm = TRUE)
+seq_mets_min_mtry <- apply(mse.cv.rmets_rf, c(1, 2), which.min)
 
-harm_means_rf <- apply(rmse.cv.harm_rf, c(2,3), mean)
-windows_means_rf <- apply(rmse.cv.windows_rf, c(2,3), mean)
-om_hard_means_rf <- apply(rmse.cv.om_hard_rf, c(2,3), mean)
-om_soft_means_rf <- apply(rmse.cv.om_soft_rf, c(2,3), mean)
-lcs_hard_means_rf <- apply(rmse.cv.lcs_hard_rf, c(2,3), mean)
-lcs_soft_means_rf <- apply(rmse.cv.lcs_soft_rf, c(2,3), mean)
-soft_cluster_seqs <- apply(rmse.cv.om_seq_soft, c(2,3), mean)
-hard_cluster_seqs <- apply(rmse.cv.om_seq_hard, c(2,3), mean)
+# find average of best performances (by mtry) across folds 
+seq_mets_pc_means_lm <- sqrt(apply(seq_mets_mins, 2, mean))
+best_n_seq_mets_pc <- which.min(seq_mets_pc_means_lm)
 
-
-# Long form 
-windows_long <- pivot_means(windows_means_rf, "Windows", nWindows)
-harms_long <- pivot_means(harm_means_rf, "Harmonics", nHarms)
-om_hard_long <- pivot_means(om_hard_means_rf, "Clusters", nClusts)
-om_soft_long <- pivot_means(om_soft_means_rf, "Clusters", nSoftClusts)
-lcs_hard_long <- pivot_means(lcs_hard_means_rf, "Clusters", nClusts)
-lcs_soft_long <- pivot_means(lcs_soft_means_rf, "Clusters", nSoftClusts)
-soft_seq_long <- pivot_means(soft_cluster_seqs, "Clusters", nSoftClusts)
-hard_seq_long <- pivot_means(hard_cluster_seqs, "Clusters", nClusts)
+# Old way for handling best way to do it 
+# data frame to hold best combinations - long makes more sense 
+mse.seq_clusts <- list()
+mse.seq_clusts$om_trate_hard <- array(NA,c(folds,nClusts,nCovars + 1))
+mse.seq_clusts$om_trate_soft <-  array(NA,c(folds,nClusts,nCovars + nSoftClusts - 1))
+mse.seq_clusts$om_slog_hard <- array(NA,c(folds,nClusts,nCovars + 1))
+mse.seq_clusts$om_slog_soft <- array(NA,c(folds,nClusts,nCovars + nSoftClusts - 1))
+mse.seq_clusts$lcs_hard <- array(NA,c(folds,nClusts,nCovars + 1))
+mse.seq_clusts$lcs_soft <- array(NA,c(folds,nClusts,nCovars + nSoftClusts - 1))
 
 
-best_windows <- windows_long %>% group_by(Windows) %>% drop_na() %>% slice_min(RMSE,n=1) %>% mutate(RMSE = sprintf("%.5f", RMSE)) %>% ungroup
-best_harms <- harms_long %>% group_by(Harmonics) %>% drop_na() %>% slice_min(RMSE,n=1) %>% mutate(RMSE = sprintf("%.5f", RMSE)) %>% ungroup
-best_om_hard <- om_hard_long %>% group_by(Clusters) %>% drop_na() %>% slice_min(RMSE,n=1) %>% mutate(RMSE = sprintf("%.5f", RMSE)) %>% ungroup
-best_om_soft <- om_soft_long %>% group_by(Clusters) %>% drop_na() %>% slice_min(RMSE,n=1) %>% mutate(RMSE = sprintf("%.5f", RMSE)) %>% ungroup
-best_lcs_hard <- lcs_hard_long %>% group_by(Clusters) %>% drop_na() %>% slice_min(RMSE,n=1) %>% mutate(RMSE = sprintf("%.5f", RMSE)) %>% ungroup
-best_lcs_soft <- lcs_soft_long %>% group_by(Clusters) %>% drop_na() %>% slice_min(RMSE,n=1) %>% mutate(RMSE = sprintf("%.5f", RMSE)) %>% ungroup
-best_soft_seq <- soft_seq_long %>% group_by(Clusters) %>% drop_na() %>% slice_min(RMSE,n=1) %>% mutate(RMSE = sprintf("%.5f", RMSE)) %>% ungroup
-best_hard_seq <- hard_seq_long %>% group_by(Clusters) %>% drop_na() %>% slice_min(RMSE,n=1) %>% mutate(RMSE = sprintf("%.5f", RMSE)) %>% ungroup
+for (i in 1:folds) {
+  cat("Fold Number ",i,"\n")
+  test_idx <- idx == i
+  train_idx <- !test_idx
+  
+  # using rmetrics from above
+  train_rmetrics <- rmetrics[train_idx, ]
+  test_rmetrics <- rmetrics[test_idx, ]
+  
+  pca_comps_train <- prcomp(x=train_rmetrics, center=TRUE, scale=TRUE)
+  
+  train_scores <- pca_comps_train$x[,1:best_n_seq_mets_pc]
+  test_scores <- predict(pca_comps_train, newdata = test_rmetrics)[,1:best_n_seq_mets_pc]
+      
+  # Do 6 different combinations of clustering and sequence PCS
+  # create hierarchical clustering
+  clusterward_hard_trate <- agnes(dists[[1]][train_idx,train_idx], diss=TRUE, method="ward")
+  clusterward_hard_lcs <- agnes(dists[[2]][train_idx,train_idx], diss=TRUE, method="ward")
+  clusterward_hard_slog <- agnes(dists[[3]][train_idx,train_idx], diss=TRUE, method="ward")
+
+  # create clusterings 
 
 
-# Create data frame of all data 
-best.rmse <- data.frame(matrix(NA, nrow = nClusts, ncol = 1))
-colnames(best.rmse) <- c("seq_soft")
-best.rmse$seq_soft <- c(NA, best_soft_seq$RMSE, rep(NA, nClusts-nSoftClusts))
-best.rmse$seq_hard <- c(NA, best_hard_seq$RMSE)
-best.rmse$cfda <- best_harms$RMSE
-best.rmse$windows <- c(best_windows$RMSE, rep(NA, nClusts - nWindows))
-best.rmse$om_hard <- c(NA, best_om_hard$RMSE)
-best.rmse$om_soft <- c(NA, best_om_soft$RMSE, rep(NA, nClusts-nSoftClusts))
-best.rmse$lcs_hard <- c(NA, best_lcs_hard$RMSE)
-best.rmse$lcs_soft <- c(NA, best_lcs_soft$RMSE, rep(NA, nClusts-nSoftClusts))
+  for (j in 2:nClusts) {
+
+    om_trate_clustered_hard <- hard_cluster(clusterward = clusterward_hard_trate, nClusts = j, 
+      covars=mvad_covars, num_month_em_last_year, train_idx, test_idx, dists[[1]])
+    om_trate_hard_train <- cbind(om_trate_clustered_hard$train_data, train_scores) 
+    om_trate_hard_test <- cbind(om_trate_clustered_hard$test_data, test_scores) 
+    
+    # om-slog hard
+  om_slog_clustered_hard <- hard_cluster(clusterward = clusterward_hard_slog, nClusts = j, 
+      covars=mvad_covars, num_month_em_last_year, train_idx, test_idx, dists[[3]])
+  om_slog_hard_train <- cbind(om_slog_clustered_hard$train_data, train_scores) 
+  om_slog_hard_test <- cbind(om_slog_clustered_hard$test_data, test_scores)
+    
+  # lcs hard
+  lcs_clustered_hard <- hard_cluster(clusterward = clusterward_hard_lcs, nClusts = j, 
+      covars=mvad_covars, num_month_em_last_year, train_idx, test_idx, dists[[2]])
+  lcs_hard_train <- cbind(lcs_clustered_hard$train_data, train_scores)
+  lcs_hard_test <- cbind(lcs_clustered_hard$test_data, test_scores) 
+    
+  # om-trate soft
+    if (j < nSoftClusts) {
+      om_trate_clustered_soft <- soft_cluster(dists[[1]], train_idx, test_idx = test_idx,
+        nClusts = j,fuzziness=fuzz_soft, covars = mvad_covars, num_month_em_last_year = num_month_em_last_year)
+      om_trate_soft_train <- cbind(om_trate_clustered_soft$train_data, train_scores)
+      om_trate_soft_test <- cbind(om_trate_clustered_soft$test_data, test_scores) 
+
+      # om-slog soft
+      om_slog_clustered_soft <- soft_cluster(dists[[3]], train_idx, test_idx = test_idx,
+        nClusts = j,fuzziness=fuzz_soft, covars = mvad_covars, num_month_em_last_year = num_month_em_last_year)
+      om_slog_soft_train <- cbind(om_slog_clustered_soft$train_data, train_scores)
+      om_slog_soft_test <- cbind(om_slog_clustered_soft$test_data, test_scores)
+
+      # lcs soft 
+      lcs_clustered_soft <- soft_cluster(dists[[2]], train_idx, test_idx = test_idx,
+        nClusts = j,fuzziness=fuzz_soft, covars = mvad_covars, num_month_em_last_year = num_month_em_last_year)
+      lcs_soft_train <- cbind(lcs_clustered_soft$train_data, train_scores) 
+      lcs_soft_test <- cbind(lcs_clustered_soft$test_data, test_scores) 
+      
+    }
+
+    for (k in 1:(nCovars + j)) {
+
+      if (k < nCovars + 1) {
+        mse.seq_clusts[["om_trate_hard"]][i, j,k] <- train_mse_rf(
+          train_data = om_trate_hard_train, 
+          test_data = om_trate_hard_test)
+    
+        mse.seq_clusts[["om_slog_hard"]][i, j,k] <- train_mse_rf(
+          train_data = om_slog_hard_train, 
+          test_data = om_slog_hard_test)
+
+        mse.seq_clusts[["lcs_hard"]][i, j,k] <- train_mse_rf(
+          train_data = lcs_hard_train, 
+          test_data = lcs_hard_test)
+        }
+      
+        if (j < nSoftClusts) {
+      
+        mse.seq_clusts[["om_trate_soft"]][i,j,k] <- train_mse_rf(
+          train_data = om_trate_soft_train, 
+          test_data = om_trate_soft_test)
+      
+        mse.seq_clusts[["om_slog_soft"]][i,j,k] <- train_mse_rf(
+          train_data = om_slog_soft_train, 
+          test_data = om_slog_soft_test)
+
+        mse.seq_clusts[["lcs_soft"]][i,j,k] <- train_mse_rf(
+          train_data = lcs_soft_train, 
+          test_data = lcs_soft_test)
+
+        }
+    }
+  }
+}
+
+# Get optimal performance for each seq pc + clustering method. 
+min_mtry.seq_clusts <- list()
+min_mtry.seq_clusts$om_trate_hard <- apply(mse.seq_clusts[[ "om_trate_hard"]], c(1,2), which.min)
+min_mtry.seq_clusts$om_trate_soft <-  apply(mse.seq_clusts[["om_trate_soft"]], c(1,2), which.min)
+min_mtry.seq_clusts$om_slog_hard <- apply(mse.seq_clusts[["om_slog_hard"]], c(1,2), which.min)
+min_mtry.seq_clusts$om_slog_soft <- apply(mse.seq_clusts[["om_slog_soft" ]], c(1,2), which.min)
+min_mtry.seq_clusts$lcs_hard <- apply(mse.seq_clusts[["lcs_hard"]], c(1,2), which.min)
+min_mtry.seq_clusts$lcs_soft <- apply(mse.seq_clusts[["lcs_soft"]], c(1,2), which.min)
+
+# Inf for n=1 clusters - ignore for now
+min_mse.seq_clusts <- list()
+min_mse.seq_clusts$om_trate_hard <- apply(mse.seq_clusts[[ "om_trate_hard"]], c(1,2), min, na.rm = TRUE)
+min_mse.seq_clusts$om_trate_soft <-  apply(mse.seq_clusts[["om_trate_soft"]], c(1,2),  min, na.rm = TRUE)
+min_mse.seq_clusts$om_slog_hard <- apply(mse.seq_clusts[["om_slog_hard"]], c(1,2),  min, na.rm = TRUE)
+min_mse.seq_clusts$om_slog_soft <- apply(mse.seq_clusts[["om_slog_soft" ]], c(1,2),  min, na.rm = TRUE)
+min_mse.seq_clusts$lcs_hard <- apply(mse.seq_clusts[["lcs_hard"]], c(1,2), min, na.rm = TRUE)
+min_mse.seq_clusts$lcs_soft <- apply(mse.seq_clusts[["lcs_soft"]], c(1,2), min, na.rm = TRUE)
+
+rmse.seqs_clusts <- list()
+rmse.seqs_clusts$om_trate_hard <- sqrt(apply(min_mse.seq_clusts$om_trate_hard, 2, mean))
+rmse.seqs_clusts$om_trate_soft <- sqrt(apply(min_mse.seq_clusts$om_trate_soft , 2, mean))
+rmse.seqs_clusts$om_slog_sof <- sqrt(apply(min_mse.seq_clusts$om_slog_soft, 2, mean))
+rmse.seqs_clusts$lcs_hard <- sqrt(apply(min_mse.seq_clusts$lcs_hard, 2, mean))
+rmse.seqs_clusts$lcs_soft <- sqrt(apply(min_mse.seq_clusts$lcs_soft, 2, mean))
+
+saveRDS(min_mtry.seq_clusts, "NonLinearMtrySeq+ClustMethods.rds")
+saveRDS(min_mse.seq_clusts, "NonLinearMinMSEOptSeq+ClustMethods.rds")
+saveRDS(rmse.seqs_clusts, "NonLinearRMSEOptSeq+ClustMethods.rds")
 
 
-best.rmse$index <- 1:nrow(best.rmse)
+# In our summary we want the average RMSE across the folds for each method for each number of clusters
+# in other words we want to find the minimum performances (across the mtry) and then report the average of
+# these
 
-best.rmse_long <- best.rmse %>%
+# keep actual mtry values to know optimal performances across fold and number of components 
+harm_rf_min_mtry <- apply(mse.cv.harm_rf, c(1,2), which.min)
+windows_rf_min_mtry <- apply(mse.cv.windows_rf , c(1,2), which.min)
+om_trate_hard_rf_min_mtry <- apply(mse.cv.om_trate_hard_rf , c(1,2), which.min)
+om_trate_soft_rf_min_mtry <- apply(mse.cv.om_trate_soft_rf,  c(1,2), which.min)
+om_slog_hard_rf_min_mtry <- apply(mse.cv.om_slog_hard_rf , c(1,2), which.min)
+om_slog_soft_rf_min_mtry <- apply(mse.cv.om_slog_soft_rf , c(1,2), which.min)
+lcs_hard_rf_min_mtry <- apply(mse.cv.lcs_hard_rf, c(1,2), which.min)
+lcs_soft_rf_min_mtry <- apply(mse.cv.lcs_soft_rf, c(1,2), which.min)
+
+mtry_mins <- list(harm_rf_min_mtry=harm_rf_min_mtry, windows_rf_min_mtry=windows_rf_min_mtry, om_trate_hard_rf_min_mtry=om_trate_hard_rf_min_mtry,
+  om_trate_soft_rf_min_mtry=om_trate_soft_rf_min_mtry,om_slog_hard_rf_min_mtry =om_slog_hard_rf_min_mtry, om_slog_soft_rf_min_mtry=om_slog_soft_rf_min_mtry,
+  lcs_hard_rf_min_mtry=lcs_hard_rf_min_mtry, seq_mets_min_mtry=seq_mets_min_mtry)
+
+saveRDS(mtry_mins, file="NonLinearCompMtryVals.rds")
+
+
+
+# First find the minimum across dim 1 and 2 (this essentially gets the best performance
+# by each combination)
+harm_rf_min <- apply(mse.cv.harm_rf, c(1,2), min, na.rm = TRUE)
+windows_rf_min <- apply(mse.cv.windows_rf , c(1,2), min, na.rm = TRUE)
+om_trate_hard_rf_min <- apply(mse.cv.om_trate_hard_rf , c(1,2), min, na.rm = TRUE)
+om_trate_soft_rf_min <- apply(mse.cv.om_trate_soft_rf,  c(1,2), min, na.rm = TRUE)
+om_slog_hard_rf_min <- apply(mse.cv.om_slog_hard_rf , c(1,2), min, na.rm = TRUE)
+om_slog_soft_rf_min <- apply(mse.cv.om_slog_soft_rf , c(1,2), min, na.rm = TRUE)
+lcs_hard_rf_min <- apply(mse.cv.lcs_hard_rf, c(1,2), min, na.rm = TRUE)
+lcs_soft_rf_min <- apply(mse.cv.lcs_soft_rf, c(1,2), min, na.rm = TRUE)
+
+# get means across the folds (of the best performances by mtry)
+harm_means_rf <- sqrt(apply(harm_rf_min, 2, mean))
+windows_means_rf <- sqrt(apply(windows_rf_min, 2, mean))
+om_trate_hard_means_rf <- sqrt(apply(om_trate_hard_rf_min, 2, mean))
+om_trate_soft_means_rf <- sqrt(apply(om_trate_soft_rf_min, 2, mean))
+om_slog_hard_means_rf <- sqrt(apply(om_slog_hard_rf_min, 2, mean))
+om_slog_soft_means_rf <- sqrt(apply(om_slog_soft_rf_min, 2, mean))
+lcs_hard_means_rf <- sqrt(apply(lcs_hard_rf_min, 2, mean))
+lcs_soft_means_rf <- sqrt(apply(lcs_soft_rf_min , 2, mean))
+
+
+rmse.frame <- data.frame(matrix(NA, nrow = 25, ncol = 8))
+colnames(rmse.frame) <- c("OM T-Rate (Hard)", "OM T-Rate (Soft)", "OM INDELSLOG (Hard)", "OM INDELSLOG (Soft)", "LCS (Hard)", "LCS (Soft)", "Windows", "CFDA")
+
+rmse.frame["OM T-Rate (Hard)"] <- c(NA, om_hard_means_rf[2:nClusts])
+rmse.frame["OM T-Rate (Soft)"] <- c(NA, om_trate_soft_means_rf[2:nSoftClusts])
+rmse.frame["OM INDELSLOG (Hard)"] <- c(NA, om_slog_hard_means_rf[2:nClusts])
+rmse.frame["OM INDELSLOG (Soft)"] <- c(NA, om_slog_soft_means_rf[2:nSoftClusts])
+rmse.frame["LCS (Hard)"] <- c(NA, lcs_hard_means_rf[2:nClusts])
+rmse.frame["LCS (Soft)"] <- c(NA, lcs_soft_means_rf[2:nSoftClusts])
+rmse.frame["Windows"] <- c(windows_means_rf, rep(NA,9))
+rmse.frame["CFDA"] <- harm_means_rf
+#rmse.frame["Sequence Metrics"] <- c(seq_mets_pc_means_lm, rep(NA, 13))
+rmse.frame$Index <- 1:nrow(rmse.frame)
+
+rmse_long <- rmse.frame |> filter(Index < 16) %>%
   pivot_longer(
-    cols = -index,          
-    names_to = "Method",    
-    values_to = "RMSE"      
-  ) %>% rename(Component=index)
+    cols = -Index,          # Columns to pivot (all except Index)
+    names_to = "Method",    # New column for the column names (OM, LCS, etc.)
+    values_to = "RMSE"      # New column for the values
+  )
 
-
-best.rmse_long$RMSE <- as.numeric(as.character(best.rmse_long$RMSE))
-
-pdf("NonLinearCompPlot.pdf",width=9,height=7)
-ggplot(data = best.rmse_long, 
-       aes(x = Component, y = RMSE, color = Method,group=Method)) +
+ggplot(data = rmse_long, 
+       aes(x = Index, y = RMSE, color = Method)) +
   geom_line(linewidth = 1) +
   geom_point(size = 2) + 
-  labs(title = "Random Forest Tuned Performance by Method",
+  labs(title = "Random Forest Performance by Method",
        x = "Components/Clusters",
-       y = "RMSE Value",
+       y = "RMSE Value (Averaged)",
        color = "Method") +
-  scale_color_discrete(labels = c(cfda = "CFDA", lcs_hard = "Hard Clusters (LCS)", lcs_soft = "Soft Clusters (LCS)", om_hard="Hard Clusters (OM-TRate)", om_soft="Soft Clusters (OM-Trate)",  seq_hard="Hard Clusters + 9 Sequence Metric PCs", seq_soft="Soft Clusters + 9 Sequence Metric PCs", windows="Windows")) + theme_minimal()
-dev.off()
+  theme_minimal()
 
-write.csv(best.rmse, "NonLinearCompetitionRMSE.csv", row.names=FALSE)
+pdf("NonLinearCompPlot.pdf",width=8,height=6)
+
+saveRDS(rmse.frame, file="NonLinearCompetitionRMSE.rds")
+
+
+
+  
 
 
 

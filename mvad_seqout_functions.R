@@ -166,7 +166,7 @@ train_test_lm_clust_soft_fkmmed <- function(dist_matrix, nClusts, dat, Y.cont, t
    
   fcl <- FKM.med(as.dist(dist_matrix[train_idx, train_idx]),k=nClusts,m=m,RS=RS)
   
-  
+
   train.memb <- fcl$U 
   
   # tried this - different outcomes - not sure why  
@@ -287,22 +287,19 @@ train_test_lm_clust_soft_seq <- function(dist_matrix, nClusts, dat, Y.cont, trai
 }
 
 
+train_mse_rf <- function(train_data, test_data, mtry = NA) {
 
-
-
-
-
-
-
-
-
-train_mse_rf <- function(train_data, test_data, mtry) {
+  if (!is.na(mtry)) {
+    mtry_tr = mtry
+  } else {
+    mtry_tr = ncol(train_data) - 1
+  }
  
   # fit with hard clusters 
   fit.rf <- ranger(num_month_em_last_year ~ .,
                         data = train_data,
                         num.trees = 1000, 
-                        mtry = mtry,
+                        mtry = mtry_tr,
                         respect.unordered.factors = TRUE)
 
 
