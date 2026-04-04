@@ -475,6 +475,8 @@ rmse_long <- rmse.frame |> filter(Index < 16) %>%
     values_to = "RMSE"      # New column for the values
   )
 
+
+pdf("LinearCompPlot.pdf",width=8,height=6)
 ggplot(data = rmse_long, 
        aes(x = Index, y = RMSE, color = Method)) +
   geom_line(linewidth = 1) +
@@ -484,7 +486,8 @@ ggplot(data = rmse_long,
        y = "RMSE Value (Averaged)",
        color = "Method") +
   theme_minimal()
-pdf("LinearCompPlot.pdf",width=8,height=6)
+
+dev.off()
 
 saveRDS(mse.seq_clusts, file="LinearRMSEOptSeq+ClustMethods.rds")
 saveRDS(rmse.frame, file="LinearCompetitionRMSE.rds")

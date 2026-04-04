@@ -47,6 +47,7 @@ mvad_last_year <- mvad[,75:86]
 num_month_em_last_year <- apply(mvad_last_year, 1, function(x) length(which(x=="employment")))
 mvad_covars <- mvad[3:14] %>% dplyr::select(-Western) #reference group
 
+
 nWindows <- 16 
 nClusts <- 25
 nSoftClusts <- 13
@@ -129,7 +130,6 @@ for (i in 1:folds) {
 
 
 ### Windows 
-
 mvad_states <- mvad[,c(1,15:50)]
 
 # column names for the three years 
@@ -338,7 +338,7 @@ mvad_rmetrics <- mvad_states %>% mutate(
 
 # Training set up 
 rmetrics <- mvad_rmetrics[,37:48] 
-nSeqPcs <- ncol(rmetrics)
+#nSeqPcs <- ncol(rmetrics)
 
 # go through folds in repeat
 for (i in 1:folds) {
@@ -485,103 +485,107 @@ for (i in 1:folds) {
   }
 }
 
+
+## Tracking for Sequence Metrics + Clustering 
+
 # Get optimal performance for each seq pc + clustering method. 
 min_mtry.seq_clusts <- list()
-min_mtry.seq_clusts$om_trate_hard <- apply(mse.seq_clusts[[ "om_trate_hard"]], c(1,2), which.min)
-min_mtry.seq_clusts$om_trate_soft <-  apply(mse.seq_clusts[["om_trate_soft"]], c(1,2), which.min)
-min_mtry.seq_clusts$om_slog_hard <- apply(mse.seq_clusts[["om_slog_hard"]], c(1,2), which.min)
-min_mtry.seq_clusts$om_slog_soft <- apply(mse.seq_clusts[["om_slog_soft" ]], c(1,2), which.min)
-min_mtry.seq_clusts$lcs_hard <- apply(mse.seq_clusts[["lcs_hard"]], c(1,2), which.min)
-min_mtry.seq_clusts$lcs_soft <- apply(mse.seq_clusts[["lcs_soft"]], c(1,2), which.min)
+min_mtry.seq_clusts$om_trate_hard <- apply(mse.seq_clusts[[ "om_trate_hard"]], c(1,2), safe_which_min)
+min_mtry.seq_clusts$om_trate_soft <-  apply(mse.seq_clusts[["om_trate_soft"]], c(1,2), safe_which_min)
+min_mtry.seq_clusts$om_slog_hard <- apply(mse.seq_clusts[["om_slog_hard"]], c(1,2), safe_which_min)
+min_mtry.seq_clusts$om_slog_soft <- apply(mse.seq_clusts[["om_slog_soft" ]], c(1,2), safe_which_min)
+min_mtry.seq_clusts$lcs_hard <- apply(mse.seq_clusts[["lcs_hard"]], c(1,2), safe_which_min)
+min_mtry.seq_clusts$lcs_soft <- apply(mse.seq_clusts[["lcs_soft"]], c(1,2), safe_which_min)
 
 # Inf for n=1 clusters - ignore for now
 min_mse.seq_clusts <- list()
-min_mse.seq_clusts$om_trate_hard <- apply(mse.seq_clusts[[ "om_trate_hard"]], c(1,2), min, na.rm = TRUE)
-min_mse.seq_clusts$om_trate_soft <-  apply(mse.seq_clusts[["om_trate_soft"]], c(1,2),  min, na.rm = TRUE)
-min_mse.seq_clusts$om_slog_hard <- apply(mse.seq_clusts[["om_slog_hard"]], c(1,2),  min, na.rm = TRUE)
-min_mse.seq_clusts$om_slog_soft <- apply(mse.seq_clusts[["om_slog_soft" ]], c(1,2),  min, na.rm = TRUE)
-min_mse.seq_clusts$lcs_hard <- apply(mse.seq_clusts[["lcs_hard"]], c(1,2), min, na.rm = TRUE)
-min_mse.seq_clusts$lcs_soft <- apply(mse.seq_clusts[["lcs_soft"]], c(1,2), min, na.rm = TRUE)
+min_mse.seq_clusts$om_trate_hard <- apply(mse.seq_clusts[[ "om_trate_hard"]], c(1,2), safe_min, na.rm = TRUE)
+min_mse.seq_clusts$om_trate_soft <-  apply(mse.seq_clusts[["om_trate_soft"]], c(1,2),  safe_min, na.rm = TRUE)
+min_mse.seq_clusts$om_slog_hard <- apply(mse.seq_clusts[["om_slog_hard"]], c(1,2),  safe_min, na.rm = TRUE)
+min_mse.seq_clusts$om_slog_soft <- apply(mse.seq_clusts[["om_slog_soft" ]], c(1,2),  safe_min, na.rm = TRUE)
+min_mse.seq_clusts$lcs_hard <- apply(mse.seq_clusts[["lcs_hard"]], c(1,2), safe_min, na.rm = TRUE)
+min_mse.seq_clusts$lcs_soft <- apply(mse.seq_clusts[["lcs_soft"]], c(1,2), safe_min, na.rm = TRUE)
 
 rmse.seqs_clusts <- list()
 rmse.seqs_clusts$om_trate_hard <- sqrt(apply(min_mse.seq_clusts$om_trate_hard, 2, mean))
 rmse.seqs_clusts$om_trate_soft <- sqrt(apply(min_mse.seq_clusts$om_trate_soft , 2, mean))
-rmse.seqs_clusts$om_slog_sof <- sqrt(apply(min_mse.seq_clusts$om_slog_soft, 2, mean))
+rmse.seqs_clusts$om_slog_hard <- sqrt(apply(min_mse.seq_clusts$om_slog_hard , 2, mean))
+rmse.seqs_clusts$om_slog_soft <- sqrt(apply(min_mse.seq_clusts$om_slog_soft, 2, mean))
 rmse.seqs_clusts$lcs_hard <- sqrt(apply(min_mse.seq_clusts$lcs_hard, 2, mean))
 rmse.seqs_clusts$lcs_soft <- sqrt(apply(min_mse.seq_clusts$lcs_soft, 2, mean))
 
-saveRDS(min_mtry.seq_clusts, "NonLinearMtrySeq+ClustMethods.rds")
-saveRDS(min_mse.seq_clusts, "NonLinearMinMSEOptSeq+ClustMethods.rds")
-saveRDS(rmse.seqs_clusts, "NonLinearRMSEOptSeq+ClustMethods.rds")
+saveRDS(min_mtry.seq_clusts, "NonLinearSEQMBestMtry.rds")
+saveRDS(min_mse.seq_clusts, "NonLinearSEQMMinMSE.rds")
+saveRDS(rmse.seqs_clusts, "NonLinearSEQMAverRMSE.rds")
 
+
+# Overall Performance Tracking 
 
 # In our summary we want the average RMSE across the folds for each method for each number of clusters
 # in other words we want to find the minimum performances (across the mtry) and then report the average of
 # these
 
 # keep actual mtry values to know optimal performances across fold and number of components 
-harm_rf_min_mtry <- apply(mse.cv.harm_rf, c(1,2), which.min)
-windows_rf_min_mtry <- apply(mse.cv.windows_rf , c(1,2), which.min)
-om_trate_hard_rf_min_mtry <- apply(mse.cv.om_trate_hard_rf , c(1,2), which.min)
-om_trate_soft_rf_min_mtry <- apply(mse.cv.om_trate_soft_rf,  c(1,2), which.min)
-om_slog_hard_rf_min_mtry <- apply(mse.cv.om_slog_hard_rf , c(1,2), which.min)
-om_slog_soft_rf_min_mtry <- apply(mse.cv.om_slog_soft_rf , c(1,2), which.min)
-lcs_hard_rf_min_mtry <- apply(mse.cv.lcs_hard_rf, c(1,2), which.min)
-lcs_soft_rf_min_mtry <- apply(mse.cv.lcs_soft_rf, c(1,2), which.min)
-
-mtry_mins <- list(harm_rf_min_mtry=harm_rf_min_mtry, windows_rf_min_mtry=windows_rf_min_mtry, om_trate_hard_rf_min_mtry=om_trate_hard_rf_min_mtry,
-  om_trate_soft_rf_min_mtry=om_trate_soft_rf_min_mtry,om_slog_hard_rf_min_mtry =om_slog_hard_rf_min_mtry, om_slog_soft_rf_min_mtry=om_slog_soft_rf_min_mtry,
-  lcs_hard_rf_min_mtry=lcs_hard_rf_min_mtry, seq_mets_min_mtry=seq_mets_min_mtry)
-
-saveRDS(mtry_mins, file="NonLinearCompMtryVals.rds")
-
-
+min_mtry <- list()
+min_mtry$harm_rf_min_mtry <- apply(mse.cv.harm_rf, c(1,2), which.min)
+min_mtry$windows_rf_min_mtry <- apply(mse.cv.windows_rf , c(1,2), which.min)
+min_mtry$om_trate_hard_rf_min_mtry <- apply(mse.cv.om_trate_hard_rf , c(1,2), which.min)
+min_mtry$om_trate_soft_rf_min_mtry <- apply(mse.cv.om_trate_soft_rf,  c(1,2), which.min)
+min_mtry$om_slog_hard_rf_min_mtry <- apply(mse.cv.om_slog_hard_rf , c(1,2), which.min)
+min_mtry$om_slog_soft_rf_min_mtry <- apply(mse.cv.om_slog_soft_rf , c(1,2), which.min)
+min_mtry$cs_hard_rf_min_mtry <- apply(mse.cv.lcs_hard_rf, c(1,2), which.min)
+min_mtry$lcs_soft_rf_min_mtry <- apply(mse.cv.lcs_soft_rf, c(1,2), which.min)
 
 # First find the minimum across dim 1 and 2 (this essentially gets the best performance
 # by each combination)
-harm_rf_min <- apply(mse.cv.harm_rf, c(1,2), min, na.rm = TRUE)
-windows_rf_min <- apply(mse.cv.windows_rf , c(1,2), min, na.rm = TRUE)
-om_trate_hard_rf_min <- apply(mse.cv.om_trate_hard_rf , c(1,2), min, na.rm = TRUE)
-om_trate_soft_rf_min <- apply(mse.cv.om_trate_soft_rf,  c(1,2), min, na.rm = TRUE)
-om_slog_hard_rf_min <- apply(mse.cv.om_slog_hard_rf , c(1,2), min, na.rm = TRUE)
-om_slog_soft_rf_min <- apply(mse.cv.om_slog_soft_rf , c(1,2), min, na.rm = TRUE)
-lcs_hard_rf_min <- apply(mse.cv.lcs_hard_rf, c(1,2), min, na.rm = TRUE)
-lcs_soft_rf_min <- apply(mse.cv.lcs_soft_rf, c(1,2), min, na.rm = TRUE)
+min_mse <- list()
+min_mse$harm <- apply(mse.cv.harm_rf, c(1,2), safe_min, na.rm = TRUE)
+min_mse$windows <- apply(mse.cv.windows_rf , c(1,2), safe_min, na.rm = TRUE)
+min_mse$om_trate_hard <- apply(mse.cv.om_trate_hard_rf , c(1,2), safe_min, na.rm = TRUE)
+min_mse$om_trate_soft <- apply(mse.cv.om_trate_soft_rf,  c(1,2), safe_min, na.rm = TRUE)
+min_mse$om_slog_hard <- apply(mse.cv.om_slog_hard_rf , c(1,2), safe_min, na.rm = TRUE)
+min_mse$om_slog_soft <- apply(mse.cv.om_slog_soft_rf , c(1,2), safe_min, na.rm = TRUE)
+min_mse$lcs_hard <- apply(mse.cv.lcs_hard_rf, c(1,2), safe_min, na.rm = TRUE)
+min_mse$lcs_soft <- apply(mse.cv.lcs_soft_rf, c(1,2), safe_min, na.rm = TRUE)
 
 # get means across the folds (of the best performances by mtry)
-harm_means_rf <- sqrt(apply(harm_rf_min, 2, mean))
-windows_means_rf <- sqrt(apply(windows_rf_min, 2, mean))
-om_trate_hard_means_rf <- sqrt(apply(om_trate_hard_rf_min, 2, mean))
-om_trate_soft_means_rf <- sqrt(apply(om_trate_soft_rf_min, 2, mean))
-om_slog_hard_means_rf <- sqrt(apply(om_slog_hard_rf_min, 2, mean))
-om_slog_soft_means_rf <- sqrt(apply(om_slog_soft_rf_min, 2, mean))
-lcs_hard_means_rf <- sqrt(apply(lcs_hard_rf_min, 2, mean))
-lcs_soft_means_rf <- sqrt(apply(lcs_soft_rf_min , 2, mean))
+rmse.comp <- list()
+rmse.comp$harm <- sqrt(apply(min_mse$harm, 2, mean))
+rmse.comp$windows <- sqrt(apply(min_mse$windows, 2, mean))
+rmse.comp$om_trate_hard <- sqrt(apply(min_mse$om_trate_hard, 2, mean))
+rmse.comp$om_trate_soft <- sqrt(apply(min_mse$om_trate_soft, 2, mean))
+rmse.comp$om_slog_hard <- sqrt(apply(min_mse$om_slog_hard, 2, mean))
+rmse.comp$om_slog_soft <- sqrt(apply(min_mse$om_slog_soft, 2, mean))
+rmse.comp$lcs_hard <- sqrt(apply(min_mse$lcs_hard, 2, mean))
+rmse.comp$lcs_soft <- sqrt(apply(min_mse$lcs_soft, 2, mean))
 
 
-rmse.frame <- data.frame(matrix(NA, nrow = 25, ncol = 8))
-colnames(rmse.frame) <- c("OM T-Rate (Hard)", "OM T-Rate (Soft)", "OM INDELSLOG (Hard)", "OM INDELSLOG (Soft)", "LCS (Hard)", "LCS (Soft)", "Windows", "CFDA")
+saveRDS(min_mtry, "NonLinearCompBestMtry.rds")
+saveRDS(min_mse, "NonLinearCompBestMSE.rds")
+saveRDS(rmse.comp, "NonLinearCompAverRMSES.rds")
 
-rmse.frame["OM T-Rate (Hard)"] <- c(NA, om_hard_trate_means_rf[2:nClusts])
-rmse.frame["OM T-Rate (Soft)"] <- c(NA, om_trate_soft_means_rf[2:nSoftClusts])
-rmse.frame["OM INDELSLOG (Hard)"] <- c(NA, om_slog_hard_means_rf[2:nClusts])
-rmse.frame["OM INDELSLOG (Soft)"] <- c(NA, om_slog_soft_means_rf[2:nSoftClusts])
-rmse.frame["LCS (Hard)"] <- c(NA, lcs_hard_means_rf[2:nClusts])
-rmse.frame["LCS (Soft)"] <- c(NA, lcs_soft_means_rf[2:nSoftClusts])
-rmse.frame["Windows"] <- c(windows_means_rf, rep(NA,9))
-rmse.frame["CFDA"] <- harm_means_rf
-#rmse.frame["Sequence Metrics"] <- c(seq_mets_pc_means_lm, rep(NA, 13))
-rmse.frame$Index <- 1:nrow(rmse.frame)
 
-rmse_long <- rmse.frame |> filter(Index < 16) %>%
-  pivot_longer(
-    cols = -Index,          # Columns to pivot (all except Index)
-    names_to = "Method",    # New column for the column names (OM, LCS, etc.)
-    values_to = "RMSE"      # New column for the values
-  )
+method_labels <- c("om_trate_hard"="OM T-Rate (Hard)", 
+"om_trate_soft"="OM T-Rate (Soft)", 
+"om_slog_hard"="OM INDELSLOG (Hard)", 
+"om_slog_soft"="OM INDELSLOG (Soft)",
+"lcs_hard"="LCS (Hard)", 
+"lcs_soft"="LCS (Soft)", 
+"windows"="Windows", 
+"harm"="CFDA")
 
-ggplot(data = rmse_long, 
-       aes(x = Index, y = RMSE, color = Method)) +
+rmse_plot_data <- imap_dfr(rmse.comp, ~ data.frame(
+  index = seq_along(.x),
+  value = .x,
+  group = .y
+))
+colnames(rmse_plot_data) <- c("comps", "rmse", "method")
+rmse_plot_data$method <- method_labels[rmse_plot_data$method]
+
+
+pdf("NonLinearCompPlot.pdf",width=8,height=6) 
+ggplot(data = rmse_plot_data, 
+       aes(x = comps, y = rmse, color = method)) +
   geom_line(linewidth = 1) +
   geom_point(size = 2) + 
   labs(title = "Random Forest Performance by Method",
@@ -590,9 +594,9 @@ ggplot(data = rmse_long,
        color = "Method") +
   theme_minimal()
 
-pdf("NonLinearCompPlot.pdf",width=8,height=6)
+dev.off()
 
-saveRDS(rmse.frame, file="NonLinearCompetitionRMSE.rds")
+saveRDS(rmse_plot_data, file="NonLinearCompetitionRMSE.rds")
 
 
 

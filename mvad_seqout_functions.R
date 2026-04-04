@@ -322,6 +322,21 @@ hard_cluster <- function(clusterward, nClusts, covars, num_month_em_last_year, t
   
   return(list(train_data=train_data, test_data=test_data))
 }
+
+
+hard_cluster_sim <- function(clusterward, nClusts, y, train_idx, test_idx, dist_matrix) {
+  
+  cut1 <- cutree(clusterward,k=nClusts)
+
+  clust1.fac <- factor(cut1)
+  train_data <- data.frame(cluster=clust1.fac, y=y[train_idx])
+  
+  cut2 <- assign_new(dist_matrix,train_idx,cut1,test_idx)
+  clust2.fac <- factor(cut2)
+  test_data <- data.frame(cluster=clust2.fac, y=y[test_idx])
+  
+  return(list(train_data=train_data, test_data=test_data))
+}
   
 soft_cluster <- function(dist_matrix,train_idx,test_idx, nClusts, fuzziness=1.5, covars, num_month_em_last_year) {
   
@@ -332,6 +347,8 @@ soft_cluster <- function(dist_matrix,train_idx,test_idx, nClusts, fuzziness=1.5,
   test.memb <- assign_new_fanny(dist_mat=dist_matrix,train.idx=train_idx, train.memb=train.memb, 
                                test.idx=test_idx,memb.exp=fuzziness,n.draws=200,
                                prior.n.equiv=100) 
+
+  converged <- (clustering_soft$convergence["converged"] == 1)
   
   colnames(train.memb) <- paste0("Cluster",1:nClusts)
   colnames(test.memb) <- paste0("Cluster",1:nClusts)
@@ -347,9 +364,36 @@ soft_cluster <- function(dist_matrix,train_idx,test_idx, nClusts, fuzziness=1.5,
     test_data <- cbind(covars[test_idx,], test.memb[,-1]) %>%
       mutate(num_month_em_last_year=num_month_em_last_year[test_idx])
   } 
-  
-  return(list(train_data=train_data, test_data=test_data))
+  return(list(train_data=train_data, test_data=test_data, converged=converged))
 }
+
+
+soft_cluster_sim <- function(dist_matrix,train_idx,test_idx, nClusts, fuzziness=1.5, y) {
+  
+  clustering_soft <- fanny(dist_matrix[train_idx, train_idx], 
+                           k=nClusts, memb.exp=fuzziness, diss=TRUE, maxit = 1000)
+  
+  train.memb <- clustering_soft$membership
+  test.memb <- assign_new_fanny(dist_mat=dist_matrix,train.idx=train_idx, train.memb=train.memb, 
+                               test.idx=test_idx,memb.exp=fuzziness,n.draws=200,
+                               prior.n.equiv=100) 
+
+  converged <- (clustering_soft$convergence["converged"] == 1)
+  
+  colnames(train.memb) <- paste0("Cluster",1:nClusts)
+  colnames(test.memb) <- paste0("Cluster",1:nClusts)
+  
+  if (nClusts == 2) {
+    train_data <- data.frame(Cluster1=train.memb[,-1], y=y[train_idx])
+    test_data <- data.frame(Cluster1=test.memb[,-1], y=y[test_idx])
+  } else {
+    train_data <- data.frame(train.memb[,-1]) |> mutate(y= y[train_idx])
+    test_data <- data.frame(test.memb[,-1]) |> mutate(y= y[test_idx])
+  } 
+
+  return(list(train_data=train_data, test_data=test_data, converged=converged))
+}
+
 
 
 pivot_means <- function(fold_means, comp_name, nComps) {
@@ -404,6 +448,23 @@ fit_linear <- function(train_data, test_data) {
 
   return(mse.lin)
   
+}
+
+
+safe_min <- function(x, na.rm = TRUE) {
+  if (all(is.na(x))) {
+    return(NA)
+  } else {
+    return(min(x, na.rm = na.rm))
+  }
+}
+
+safe_which_min <- function(x) {
+  if (all(is.na(x))) {
+    return(NA) # Returns NA instead of integer(0)
+  } else {
+    return(which.min(x))
+  }
 }
 
 
