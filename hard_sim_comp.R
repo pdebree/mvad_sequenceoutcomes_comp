@@ -414,7 +414,8 @@ for (file_name in file_names) {
     mse.sims[[sim_group]][,n] <- results[[n]]$mses
     best_n_comps[[sim_group]][, n] <- results[[n]]$best_k
     train_conv_tracker[[sim_group]][[n]][["om_trate"]] <- results[[n]]$set_conv_train_track$om_trate
-
+    train_conv_tracker[[sim_group]][[n]][["om_slog"]] <- results[[n]]$set_conv_train_track$om_slog
+    train_conv_tracker[[sim_group]][[n]][["lcs"]] <- results[[n]]$set_conv_train_track$lcs
   }
 }
 
