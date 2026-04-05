@@ -148,7 +148,6 @@ mvad_states_wide <- id_year %>%
 
 mvad_windows <- cbind(mvad_covars, mvad_states_wide)
 
-
 for (i in 1:folds) {
 
   cat("Fold Number ",i,"\n")
@@ -214,7 +213,7 @@ for (i in 1:folds) {
         mse.cv.om_trate_hard_rf[i,j,k] <- train_mse_rf(train_data=train_om_hard, test_data=test_om_hard, mtry=k)
       }
       # k is only evaluated for this j if the number of soft clusters is reached
-      if (j < nSoftClusts) {
+      if (j < nSoftClusts && soft_cluster_data$converged) {
         mse.cv.om_trate_soft_rf[i,j,k] <- train_mse_rf(train_data=train_om_soft, test_data=test_om_soft, mtry=k)
       }
     }
@@ -261,7 +260,7 @@ for (i in 1:folds) {
       
       # make sure we don't look at 25 columns (but we still want to look at mtry up to the number of soft clusters)
       # because it has multiple columns (one for each cluster)
-      if (j < nSoftClusts) {
+      if (j < nSoftClusts && soft_cluster_data$converged) {
         mse.cv.om_slog_soft_rf[i,j,k] <- train_mse_rf(train_data=train_om_soft, test_data=test_om_soft, mtry=k)
       }
     }
@@ -299,7 +298,7 @@ for (i in 1:folds) {
         mse.cv.lcs_hard_rf[i,j,k] <- train_mse_rf(train_data=train_lcs_hard, test_data=test_lcs_hard, mtry=k)
       }
 
-      if (j < nSoftClusts) {
+      if (j < nSoftClusts && soft_cluster_data$converged) {
         mse.cv.lcs_soft_rf[i,j,k] <- train_mse_rf(train_data=train_lcs_soft, test_data=test_lcs_soft, mtry=k)
       }
     }
@@ -468,18 +467,24 @@ for (i in 1:folds) {
       
         if (j < nSoftClusts) {
       
-        mse.seq_clusts[["om_trate_soft"]][i,j,k] <- train_mse_rf(
-          train_data = om_trate_soft_train, 
-          test_data = om_trate_soft_test)
+        if (om_trate_clustered_soft$converged) {
+          mse.seq_clusts[["om_trate_soft"]][i,j,k] <- train_mse_rf(
+            train_data = om_trate_soft_train, 
+            test_data = om_trate_soft_test)
+        }
       
-        mse.seq_clusts[["om_slog_soft"]][i,j,k] <- train_mse_rf(
-          train_data = om_slog_soft_train, 
-          test_data = om_slog_soft_test)
+        if (om_slog_clustered_soft$converged) {
+          mse.seq_clusts[["om_slog_soft"]][i,j,k] <- train_mse_rf(
+            train_data = om_slog_soft_train, 
+            test_data = om_slog_soft_test)
 
-        mse.seq_clusts[["lcs_soft"]][i,j,k] <- train_mse_rf(
-          train_data = lcs_soft_train, 
-          test_data = lcs_soft_test)
+        }
 
+          if (lcs_clustered_soft$converged) {
+          mse.seq_clusts[["lcs_soft"]][i,j,k] <- train_mse_rf(
+            train_data = lcs_soft_train, 
+            test_data = lcs_soft_test)
+          }
         }
     }
   }
