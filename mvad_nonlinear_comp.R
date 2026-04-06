@@ -582,11 +582,7 @@ rmse.comp$lcs_soft <- sqrt(apply(min_mse$lcs_soft, 2, mean))
 
 
 
-
-
-
-
-
+saveRDS(mse.comp, "NonLinearCompFullMSEs.rds")
 saveRDS(min_mtry, "NonLinearCompBestMtry.rds")
 saveRDS(min_mse, "NonLinearCompBestMSE.rds")
 saveRDS(rmse.comp, "NonLinearCompAverRMSES.rds")
