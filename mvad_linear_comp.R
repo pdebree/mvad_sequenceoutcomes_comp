@@ -60,12 +60,6 @@ mse.cv.windows <- array(NA,c(folds,nWindows))
 mse.cv.harm <- array(NA,c(folds,nHarms))
 mse.cv.mets <- array(NA,c(folds,nSeqPcs))
 
-# Tracking convergence of soft clustering 
-conv.cv.om_trate_soft <- array(NA,c(folds,nClusts))
-conv.cv.om_slog_soft <- array(NA,c(folds,nClusts))
-conv.cv.lcs_soft <- array(NA,c(folds,nClusts))
-
-
 
 ### Cross Validation for Clustering Methods with OM-Transition Rate 
 for (i in 1:folds) {
@@ -85,8 +79,10 @@ for (i in 1:folds) {
     #soft clustering - fanny 
     if (j < nSoftClusts) {
       soft_fit_output <- train_test_lm_clust_soft(dist_matrix=dists[[1]], nClusts=j, dat=mvad_covars, Y.cont=num_month_em_last_year, train_idx=train_idx, test_idx=test_idx, fuzziness = fuzz_soft)
-      mse.cv.om_trate_soft[i,j] <- soft_fit_output$mse
-      conv.cv.om_trate_soft[i,j] <- soft_fit_output$converged
+      
+      if (soft_fit_output$converged) {
+        mse.cv.om_trate_soft[i,j] <- soft_fit_output$mse
+      }
     }
   }
 }
@@ -109,8 +105,10 @@ for (i in 1:folds) {
     #soft clustering - fanny 
     if (j < nSoftClusts) {
       soft_fit_output <- train_test_lm_clust_soft(dist_matrix=dists[[3]], nClusts=j, dat=mvad_covars, Y.cont=num_month_em_last_year, train_idx=train_idx, test_idx=test_idx, fuzziness = fuzz_soft)
-      mse.cv.om_slog_soft[i,j] <- soft_fit_output$mse
-      conv.cv.om_slog_soft[i,j] <- soft_fit_output$converged
+      
+      if (soft_fit_output$converged) {
+        mse.cv.om_slog_soft[i,j] <- soft_fit_output$mse
+      }
     }
   }
 }
@@ -135,8 +133,9 @@ for (i in 1:folds) {
                                                         Y.cont=num_month_em_last_year,
                                                         train_idx=train_idx,
                                                         test_idx=test_idx, fuzziness = fuzz_soft)
-      mse.cv.lcs_soft[i,j] <- soft_fit_output$mse
-      conv.cv.lcs_soft[i,j] <- soft_fit_output$converged
+      if (soft_fit_output$converged) {
+        mse.cv.lcs_soft[i,j] <- soft_fit_output$mse
+      }
     }
   }
 }
@@ -258,6 +257,18 @@ for (i in 1:folds) {
     mse.cv.harm[i,j] <- sum((pred_harm - test_harm$num_month_em_last_year)^2)/ nrow(test_harm)
   }
 } 
+
+
+mse.comp <- list()
+mse.comp$om_trate_hard <- mse.cv.om_trate_hard 
+mse.comp$om_trate_soft <- mse.cv.om_trate_soft 
+mse.comp$om_slog_hard  <- mse.cv.om_slog_hard 
+mse.comp$om_slog_soft  <- mse.cv.om_slog_soft 
+mse.comp$lcs_hard <- mse.cv.lcs_hard
+mse.comp$lcs_soft <- mse.cv.lcs_soft
+mse.comp$windows <- mse.cv.windows
+mse.comp$harm <- mse.cv.harm
+mse.comp$mets <- mse.cv.mets 
 
 
 
@@ -401,30 +412,38 @@ for (i in 1:folds) {
     if (j < nSoftClusts) {
       om_trate_clustered_soft <- soft_cluster(dists[[1]], train_idx, test_idx = test_idx,
         nClusts = j,fuzziness=fuzz_soft, covars = mvad_covars, num_month_em_last_year = num_month_em_last_year)
-      om_trate_soft_train <- cbind(om_trate_clustered_soft$train_data, train_scores) |> rename(y = num_month_em_last_year)
-      om_trate_soft_test <- cbind(om_trate_clustered_soft$test_data, test_scores) |> rename(y = num_month_em_last_year)
-      mse.seq_clusts[["om_trate_soft"]][i,j] <- fit_linear(
-          train_data = om_trate_soft_train, 
-          test_data = om_trate_soft_test)
-
+      
+      if (om_trate_clustered_soft$converged) {
+        om_trate_soft_train <- cbind(om_trate_clustered_soft$train_data, train_scores) |> rename(y = num_month_em_last_year)
+        om_trate_soft_test <- cbind(om_trate_clustered_soft$test_data, test_scores) |> rename(y = num_month_em_last_year)
+        mse.seq_clusts[["om_trate_soft"]][i,j] <- fit_linear(
+            train_data = om_trate_soft_train, 
+            test_data = om_trate_soft_test)
+        }
+      
       # om-slog soft
       om_slog_clustered_soft <- soft_cluster(dists[[3]], train_idx, test_idx = test_idx,
         nClusts = j,fuzziness=fuzz_soft, covars = mvad_covars, num_month_em_last_year = num_month_em_last_year)
-      om_slog_soft_train <- cbind(om_slog_clustered_soft$train_data, train_scores) |> rename(y = num_month_em_last_year)
-      om_slog_soft_test <- cbind(om_slog_clustered_soft$test_data, test_scores) |> rename(y = num_month_em_last_year)
-      mse.seq_clusts[["om_slog_soft"]][i,j] <- fit_linear(
-          train_data = om_slog_soft_train, 
-          test_data = om_slog_soft_test)
+      if (om_slog_clustered_soft$converged) {
+        om_slog_soft_train <- cbind(om_slog_clustered_soft$train_data, train_scores) |> rename(y = num_month_em_last_year)
+        om_slog_soft_test <- cbind(om_slog_clustered_soft$test_data, test_scores) |> rename(y = num_month_em_last_year)
+        mse.seq_clusts[["om_slog_soft"]][i,j] <- fit_linear(
+            train_data = om_slog_soft_train, 
+            test_data = om_slog_soft_test)
+      }
+
 
 
       # lcs soft 
       lcs_clustered_soft <- soft_cluster(dists[[2]], train_idx, test_idx = test_idx,
         nClusts = j,fuzziness=fuzz_soft, covars = mvad_covars, num_month_em_last_year = num_month_em_last_year)
-      lcs_soft_train <- cbind(lcs_clustered_soft$train_data, train_scores) |> rename(y = num_month_em_last_year)
-      lcs_soft_test <- cbind(lcs_clustered_soft$test_data, test_scores) |> rename(y = num_month_em_last_year)
-      mse.seq_clusts[["lcs_soft"]][i,j] <- fit_linear(
-          train_data = lcs_soft_train, 
-          test_data = lcs_soft_test)
+      if (lcs_clustered_soft$converged) {
+        lcs_soft_train <- cbind(lcs_clustered_soft$train_data, train_scores) |> rename(y = num_month_em_last_year)
+        lcs_soft_test <- cbind(lcs_clustered_soft$test_data, test_scores) |> rename(y = num_month_em_last_year)
+        mse.seq_clusts[["lcs_soft"]][i,j] <- fit_linear(
+            train_data = lcs_soft_train, 
+            test_data = lcs_soft_test)
+      }
     }
   }
 }
@@ -436,7 +455,6 @@ rmse.seqs_clusts$om_trate_soft <- sqrt(apply(mse.seq_clusts$om_trate_soft , 2, m
 rmse.seqs_clusts$om_slog_sof <- sqrt(apply(mse.seq_clusts$om_slog_soft, 2, mean))
 rmse.seqs_clusts$lcs_hard <- sqrt(apply(mse.seq_clusts$lcs_hard, 2, mean))
 rmse.seqs_clusts$lcs_soft <- sqrt(apply(mse.seq_clusts$lcs_soft, 2, mean))
-
 
 
 
@@ -489,8 +507,10 @@ ggplot(data = rmse_long,
 
 dev.off()
 
+saveRDS(mse.comp, file="LinearFullMSEs.rds")
 saveRDS(mse.seq_clusts, file="LinearRMSEOptSeq+ClustMethods.rds")
 saveRDS(rmse.frame, file="LinearCompetitionRMSE.rds")
+
 
 
 

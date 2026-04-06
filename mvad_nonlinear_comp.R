@@ -530,6 +530,21 @@ saveRDS(rmse.seqs_clusts, "NonLinearSEQMAverRMSE.rds")
 # in other words we want to find the minimum performances (across the mtry) and then report the average of
 # these
 
+
+
+
+mse.comp <- list()
+mse.comp$om_trate_hard <- mse.cv.om_trate_hard_rf
+mse.comp$om_trate_soft <- mse.cv.om_trate_soft_rf
+mse.comp$om_slog_hard  <- mse.cv.om_slog_hard_rf
+mse.comp$om_slog_soft  <- mse.cv.om_slog_soft_rf
+mse.comp$lcs_hard <- mse.cv.lcs_hard_rf
+mse.comp$lcs_soft <- mse.cv.lcs_soft_rf
+mse.comp$windows <- mse.cv.windows_rf
+mse.comp$harm <- mse.cv.harm_rf
+
+
+
 # keep actual mtry values to know optimal performances across fold and number of components 
 min_mtry <- list()
 min_mtry$harm_rf_min_mtry <- apply(mse.cv.harm_rf, c(1,2), which.min)
@@ -563,6 +578,13 @@ rmse.comp$om_slog_hard <- sqrt(apply(min_mse$om_slog_hard, 2, mean))
 rmse.comp$om_slog_soft <- sqrt(apply(min_mse$om_slog_soft, 2, mean))
 rmse.comp$lcs_hard <- sqrt(apply(min_mse$lcs_hard, 2, mean))
 rmse.comp$lcs_soft <- sqrt(apply(min_mse$lcs_soft, 2, mean))
+
+
+
+
+
+
+
 
 
 saveRDS(min_mtry, "NonLinearCompBestMtry.rds")
