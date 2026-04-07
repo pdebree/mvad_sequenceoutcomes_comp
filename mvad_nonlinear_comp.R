@@ -14,7 +14,7 @@ library(gt)
 library(dplyr)
 
 source("mvad_seqout_functions.R")
-set.seed(11)
+set.seed(111)
 
 
 # Data Load in 
@@ -58,15 +58,16 @@ fuzz_soft <- 1.5
 
 
 # Arrays for holding outcomes fits 
-mse.cv.harm_rf <- array(NA,c(folds,nHarms, nCovars + nHarms))
-mse.cv.windows_rf <- array(NA,c(folds,nWindows, nCovars + nWindows))
-mse.cv.om_trate_hard_rf <- array(NA,c(folds,nClusts, nCovars + 1))
-mse.cv.om_trate_soft_rf <- array(NA,c(folds,nSoftClusts,nCovars + nSoftClusts - 1))
-mse.cv.om_slog_hard_rf <- array(NA,c(folds,nClusts, nCovars + 1))
-mse.cv.om_slog_soft_rf <- array(NA,c(folds,nSoftClusts, nCovars + nSoftClusts - 1))
-mse.cv.lcs_hard_rf <- array(NA,c(folds,nClusts, nCovars + 1))
-mse.cv.lcs_soft_rf <- array(NA,c(folds,nSoftClusts, nCovars + nSoftClusts - 1))
-mse.cv.rmets_rf <- array(NA,c(folds, nSeqPcs, nCovars + nSeqPcs))
+# soft clusters - 2 (because we never look at index=1 clusters and indexing is always from 1)
+mse.cv.harm_rf <- array(NA,c(folds,nHarms, nCovars + nHarms - 1 ))
+mse.cv.windows_rf <- array(NA,c(folds,nWindows, nCovars + nWindows - 1))
+mse.cv.om_trate_hard_rf <- array(NA,c(folds,nClusts, nCovars))
+mse.cv.om_trate_soft_rf <- array(NA,c(folds,nSoftClusts,nCovars + nSoftClusts - 2))
+mse.cv.om_slog_hard_rf <- array(NA,c(folds,nClusts, nCovars))
+mse.cv.om_slog_soft_rf <- array(NA,c(folds,nSoftClusts, nCovars + nSoftClusts - 2))
+mse.cv.lcs_hard_rf <- array(NA,c(folds,nClusts, nCovars))
+mse.cv.lcs_soft_rf <- array(NA,c(folds,nSoftClusts, nCovars + nSoftClusts - 2))
+mse.cv.rmets_rf <- array(NA,c(folds, nSeqPcs, nCovars + nSeqPcs - 1))
 
 
 ### CFDA Cross Validation 
@@ -111,7 +112,7 @@ for (i in 1:folds) {
   colnames(pcs.test) <- paste0("PC",1:nComps)
 
   for (j in 1:nHarms) {
-    for (k in 1:(nCovars + j)) {
+    for (k in 1:(nCovars + j - 1)) {
         # create training set based on number of PCs to include
       train_harm <- mvad_covars[train_idx, ] %>% 
         add_column(as_tibble(pcs.train[, 1:j, drop = FALSE])) %>% 
@@ -170,8 +171,9 @@ for (i in 1:folds) {
   colnames(test_mvad_windows)[1] <- "num_month_em_last_year"
   
   for (j in 1:nWindows) {
-    for (k in 1:(nCovars + j)) {
-      mse.cv.windows_rf[i,j,k] <- train_mse_rf(train_data=train_mvad_windows[,1:(12+j)], test_data = test_mvad_windows, mtry=k)
+    for (k in 1:(nCovars + j - 1)) {
+      mse.cv.windows_rf[i,j,k] <- train_mse_rf(
+        train_data=train_mvad_windows[,1:(12+j)], test_data = test_mvad_windows, mtry=k)
     }
   }
 }
@@ -206,10 +208,11 @@ for (i in 1:folds) {
     train_om_soft <- soft_cluster_data$train_data
     test_om_soft <- soft_cluster_data$test_data
 
-    for (k in 1:(nCovars + j - 1)) {
+    # have to minus 2 because of indexing j from 2 (instead of 1 - can't look at 1 soft cluster)
+    for (k in 1:(nCovars + j - 2)) {
 
       # k can only go to nCovars + 1 because hard clusters are in one factored variable
-      if (k <= (nCovars + 1)) {
+      if (k <= (nCovars)) {
         mse.cv.om_trate_hard_rf[i,j,k] <- train_mse_rf(train_data=train_om_hard, test_data=test_om_hard, mtry=k)
       }
       # k is only evaluated for this j if the number of soft clusters is reached
@@ -251,10 +254,10 @@ for (i in 1:folds) {
     train_om_soft <- soft_cluster_data$train_data
     test_om_soft <- soft_cluster_data$test_data
 
-    for (k in 1:(nCovars + j - 1)) {
+    for (k in 1:(nCovars + j - 2)) {
      
       # we could have a large k but we still only have 12 columns (the cluster column is a factor of max 25 clusters)
-      if (k <= (nCovars + 1)) {
+      if (k <= (nCovars)) {
         mse.cv.om_slog_hard_rf[i,j,k] <- train_mse_rf(train_data=train_om_hard, test_data=test_om_hard, mtry=k)
       }
       
@@ -292,9 +295,9 @@ for (i in 1:folds) {
     train_lcs_soft <- soft_cluster_data$train_data
     test_lcs_soft <- soft_cluster_data$test_data
     
-    for (k in 1:(nCovars + j - 1)) {
+    for (k in 1:(nCovars + j - 2)) {
 
-      if (k <= (nCovars + 1)) {
+      if (k <= (nCovars)) {
         mse.cv.lcs_hard_rf[i,j,k] <- train_mse_rf(train_data=train_lcs_hard, test_data=test_lcs_hard, mtry=k)
       }
 
@@ -360,7 +363,7 @@ for (i in 1:folds) {
     colnames(train_rmets)[1] <- "num_month_em_last_year"
     colnames(test_rmets)[1] <- "num_month_em_last_year"
     
-    for (k in 1:(nCovars + j)) {
+    for (k in 1:(nCovars + j - 1)) {
       mse.cv.rmets_rf[i,j,k] <- train_mse_rf(train_data=train_rmets, test_data=test_rmets, mtry=k)
     }
   }
@@ -449,9 +452,9 @@ for (i in 1:folds) {
       
     }
 
-    for (k in 1:(nCovars + j)) {
+    for (k in 1:(nCovars + j - 1)) {
 
-      if (k < nCovars + 1) {
+      if (k <= nCovars) {
         mse.seq_clusts[["om_trate_hard"]][i, j,k] <- train_mse_rf(
           train_data = om_trate_hard_train, 
           test_data = om_trate_hard_test)
@@ -514,7 +517,7 @@ min_mse.seq_clusts$lcs_soft <- apply(mse.seq_clusts[["lcs_soft"]], c(1,2), safe_
 rmse.seqs_clusts <- list()
 rmse.seqs_clusts$om_trate_hard <- sqrt(apply(min_mse.seq_clusts$om_trate_hard, 2, mean))
 rmse.seqs_clusts$om_trate_soft <- sqrt(apply(min_mse.seq_clusts$om_trate_soft , 2, mean))
-rmse.seqs_clusts$om_slog_hard <- sqrt(apply(min_mse.seq_clusts$om_slog_hard , 2, mean))
+rmse.seqs_clusts$om_slog_hard <- sqrt(apply(min_mse.seq_clusts$om_slog_hard, 2, mean))
 rmse.seqs_clusts$om_slog_soft <- sqrt(apply(min_mse.seq_clusts$om_slog_soft, 2, mean))
 rmse.seqs_clusts$lcs_hard <- sqrt(apply(min_mse.seq_clusts$lcs_hard, 2, mean))
 rmse.seqs_clusts$lcs_soft <- sqrt(apply(min_mse.seq_clusts$lcs_soft, 2, mean))
