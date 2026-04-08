@@ -23,7 +23,7 @@ source("mvad_seqout_functions.R")
 
 nMethods <- 8
 nComps <- 8
-nSoft <- 5
+nSoft <- 4
 nSets <- 150
 fuzz_soft <- 1.25
 
@@ -86,6 +86,18 @@ train_conv_tracker$indep_semi <- replicate(nSets, set_conv_train_track, simplify
 train_conv_tracker$indep <- replicate(nSets, set_conv_train_track, simplify = FALSE)
 train_conv_tracker$semi_concord <- replicate(nSets, set_conv_train_track, simplify = FALSE)
 train_conv_tracker$semi <- replicate(nSets, set_conv_train_track, simplify = FALSE)
+
+
+set_conv_test_track <- list()
+set_conv_test_track$om_trate <- set_conv_test_track$om_slog <- set_conv_test_track$lcs <- array(NA)
+
+test_conv_tracker <- list()
+test_conv_tracker$concord <- replicate(nSets, set_conv_test_track, simplify = FALSE)
+test_conv_tracker$indep_semi  <- replicate(nSets, set_conv_test_track, simplify = FALSE)
+test_conv_tracker$indep <- replicate(nSets, set_conv_test_track, simplify = FALSE)
+test_conv_tracker$semi_concord <- replicate(nSets, set_conv_test_track, simplify = FALSE)
+test_conv_tracker$semi <- replicate(nSets, set_conv_test_track, simplify = FALSE)
+
 
 
 for (file_name in file_names) {
@@ -308,7 +320,6 @@ for (file_name in file_names) {
     y.train_set <- set_train_data[, "y"]
     y.test_set <- set_test_data[, "y"]
 
-    
     clusterward_om_trate_hard_set <- agnes(
       dists[[1]][set_train_idx, set_train_idx],
       diss=TRUE, method="ward")
@@ -316,7 +327,7 @@ for (file_name in file_names) {
       dists[[3]][set_train_idx, set_train_idx],
       diss=TRUE, method="ward")
     clusterward_lcs_hard_set <- agnes(
-      dists[[3]][set_train_idx, set_train_idx],
+      dists[[2]][set_train_idx, set_train_idx],
       diss=TRUE, method="ward")
   
     om_trate_clusters_set <- hard_cluster_sim(clusterward_om_trate_hard_set,
@@ -404,7 +415,8 @@ for (file_name in file_names) {
           mse_om_slog_soft, mse_lcs_soft),
         best_k = c(best_cfda_harms, best_windows_pcs, best_trate_hard_clusts, best_slog_hard_clusts,
           best_lcs_hard_clusts, best_trate_soft_clusts,best_slog_soft_clusts, best_lcs_soft_clusts), 
-        set_conv_train_track = set_conv_train_track
+        set_conv_train_track = set_conv_train_track,
+        set_conv_test_track = c(om_trate_soft_set$converged, om_slog_soft_set$converged, lcs_soft_set$converged)
       )
   }
   # Transfer results from workers back to global matrices
@@ -416,6 +428,9 @@ for (file_name in file_names) {
     train_conv_tracker[[sim_group]][[n]][["om_trate"]] <- results[[n]]$set_conv_train_track$om_trate
     train_conv_tracker[[sim_group]][[n]][["om_slog"]] <- results[[n]]$set_conv_train_track$om_slog
     train_conv_tracker[[sim_group]][[n]][["lcs"]] <- results[[n]]$set_conv_train_track$lcs
+    test_conv_tracker[[sim_group]][[n]]["om_trate"] <- results[[n]]$set_conv_test_track[1]
+    test_conv_tracker[[sim_group]][[n]]["om_slog"] <- results[[n]]$set_conv_test_track[2]
+    test_conv_tracker[[sim_group]][[n]]["lcs"] <- results[[n]]$set_conv_test_track[3]
   }
 }
 
@@ -463,3 +478,4 @@ saveRDS(mse.sims, paste0(sim_type,"_full_mses.rds"))
 saveRDS(best_n_comps, paste0(sim_type,"_best_n_comps.rds"))
 saveRDS(train_conv_tracker, paste0(sim_type, "_train_conv_tracker.rds"))
 saveRDS(plot_data, paste0(sim_type, "_RMSE_performance.rds"))
+saveRDS(test_conv_tracker, paste0(sim_type, "_train_conv_tracker.rds"))
