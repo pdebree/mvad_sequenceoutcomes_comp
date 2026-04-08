@@ -168,13 +168,13 @@ for (file_name in file_names) {
       
         # Hard clusterings - will "cut" depending on number of clusters. 
         clusterward_trate_hard <- agnes(
-          dists$om_trate[set_train_idx, set_train_idx][cv_train_idx,cv_train_idx],
+          as.dist(dists[["om_trate"]][set_train_idx, set_train_idx][cv_train_idx,cv_train_idx]),
             diss=TRUE, method="ward")
         clusterward_slog_hard <- agnes(
-          dists$om_slog[set_train_idx, set_train_idx][cv_train_idx,cv_train_idx],
+          as.dist(dists[["om_slog"]][set_train_idx, set_train_idx][cv_train_idx,cv_train_idx]),
             diss=TRUE, method="ward")
         clusterward_lcs_hard <- agnes(
-          dists$lcs[set_train_idx, set_train_idx][cv_train_idx,cv_train_idx],
+          as.dist(dists[["lcs"]][set_train_idx, set_train_idx][cv_train_idx,cv_train_idx]),
             diss=TRUE, method="ward")
 
   
@@ -212,13 +212,13 @@ for (file_name in file_names) {
             # ***************
             # hard clustering. 
             om_trate_clusters <- hard_cluster_sim(clusterward_trate_hard, j, set_train_data[["y"]], 
-              cv_train_idx, cv_test_idx, dist_matrix = dists$om_trate[set_train_idx, set_train_idx])
+              cv_train_idx, cv_test_idx, dist_matrix = as.dist(dists[["om_trate"]][set_train_idx, set_train_idx]))
 
             om_slog_clusters <- hard_cluster_sim(clusterward_slog_hard, j, set_train_data[["y"]], 
-              cv_train_idx, cv_test_idx, dist_matrix = dists$om_slog[set_train_idx, set_train_idx])
+              cv_train_idx, cv_test_idx, dist_matrix = as.dist(dists[["om_slog"]][set_train_idx, set_train_idx]))
             
             lcs_clusters <- hard_cluster_sim(clusterward_lcs_hard, j, set_train_data[["y"]], 
-              cv_train_idx, cv_test_idx, dist_matrix = dists$lcs[set_train_idx, set_train_idx])
+              cv_train_idx, cv_test_idx, dist_matrix = as.dist(dists[["lcs"]][set_train_idx, set_train_idx]))
 
 
             # hard is method "1" - fit model and calculate mse
@@ -235,7 +235,7 @@ for (file_name in file_names) {
           # **********************
           # soft clustering - we have to consider potential convergence problems
             if (j <= nSoft) {
-              om_trate_soft_train <- soft_cluster_sim(dists$om_trate[set_train_idx, set_train_idx],
+              om_trate_soft_train <- soft_cluster_sim(as.dist(dists[["om_trate"]][set_train_idx, set_train_idx]),
                 cv_train_idx, cv_test_idx, nClusts=j, fuzziness = fuzz_soft, y=set_train_data[["y"]]
               )
               if (om_trate_soft_train$converged) {
@@ -246,7 +246,7 @@ for (file_name in file_names) {
                 mse.cv[i, j, 6] <- NA
               }
 
-              om_slog_soft_train <- soft_cluster_sim(dists$om_slog[set_train_idx, set_train_idx],
+              om_slog_soft_train <- soft_cluster_sim(as.dist(dists[["om_slog"]][set_train_idx, set_train_idx]),
                 cv_train_idx, cv_test_idx, nClusts=j, fuzziness = fuzz_soft, y=set_train_data[["y"]]
               )
 
@@ -259,7 +259,7 @@ for (file_name in file_names) {
                 mse.cv[i, j, 7] <- NA
               }
 
-              lcs_soft_train <- soft_cluster_sim(dists$lcs[set_train_idx, set_train_idx],
+              lcs_soft_train <- soft_cluster_sim(as.dist(dists[["lcs"]][set_train_idx, set_train_idx]),
                 cv_train_idx, cv_test_idx, nClusts=j, fuzziness = fuzz_soft, y=set_train_data[["y"]]
               )
 
@@ -314,22 +314,22 @@ for (file_name in file_names) {
     y.test_set <- set_test_data[, "y"]
 
     clusterward_om_trate_hard_set <- agnes(
-      dists$om_trate[set_train_idx, set_train_idx],
+      as.dist(dists[["om_trate"]][set_train_idx, set_train_idx]),
       diss=TRUE, method="ward")
     clusterward_om_slog_hard_set <- agnes(
-      dists$om_slog[set_train_idx, set_train_idx],
+      as.dist(dists[["om_slog"]][set_train_idx, set_train_idx]),
       diss=TRUE, method="ward")
     clusterward_lcs_hard_set <- agnes(
-      dists$lcs[set_train_idx, set_train_idx],
+      as.dist(dists[["lcs"]][set_train_idx, set_train_idx]),
       diss=TRUE, method="ward")
   
     # Create clusterings based on best hard performance
     om_trate_clusters_set <- hard_cluster_sim(clusterward_om_trate_hard_set,
-      best_trate_hard_clusts, data_wide[["y"]], set_train_idx, set_test_idx, dists$om_trate)
+      best_trate_hard_clusts, data_wide[["y"]], set_train_idx, set_test_idx, as.dist(dists[["om_trate"]]))
     om_slog_clusters_set <- hard_cluster_sim(clusterward_om_slog_hard_set,
-      best_slog_hard_clusts, data_wide[["y"]], set_train_idx, set_test_idx, dists$om_slog)
+      best_slog_hard_clusts, data_wide[["y"]], set_train_idx, set_test_idx, as.dist(dists[["om_slog"]]))
     lcs_clusters_set <- hard_cluster_sim(clusterward_lcs_hard_set,
-      best_lcs_hard_clusts, data_wide[["y"]], set_train_idx, set_test_idx, dists$lcs)
+      best_lcs_hard_clusts, data_wide[["y"]], set_train_idx, set_test_idx, as.dist(dists[["lcs"]]))
   
     mse_om_trate_hard <- fit_linear(
       train_data=om_trate_clusters_set$train_data, 
@@ -345,7 +345,7 @@ for (file_name in file_names) {
     # om trate soft 
     # if there is no training convergence, mse is NA 
     if (!identical(best_trate_soft_clusts, integer(0))) {
-      om_trate_soft_set <- soft_cluster_sim(dists$om_trate,
+      om_trate_soft_set <- soft_cluster_sim(as.dist(dists[["om_trate"]]),
               set_train_idx, set_test_idx, nClusts=best_trate_soft_clusts, fuzziness = fuzz_soft, y=data_wide[["y"]])
       if (om_trate_soft_set$converged) {
         mse_om_trate_soft <- fit_linear(train_data=om_trate_soft_set$train, test_data=om_trate_soft_set$test_data)
@@ -356,7 +356,7 @@ for (file_name in file_names) {
 
     # om-slog soft 
     if (!identical(best_slog_soft_clusts, integer(0))) {
-      om_slog_soft_set <- soft_cluster_sim(dists$om_slog,
+      om_slog_soft_set <- soft_cluster_sim(as.dist(dists[["om_slog"]]),
               set_train_idx, set_test_idx, nClusts=best_slog_soft_clusts, fuzziness = fuzz_soft, y=data_wide[["y"]])
       if (om_slog_soft_set$converged) {
         mse_om_slog_soft <- fit_linear(train_data=om_slog_soft_set$train, test_data=om_slog_soft_set$test_data)
@@ -368,7 +368,7 @@ for (file_name in file_names) {
 
     # lcs soft
     if (!identical(best_trate_soft_clusts, integer(0))) {
-      lcs_soft_set <- soft_cluster_sim(dists$lcs,
+      lcs_soft_set <- soft_cluster_sim(as.dist(dists[["lcs"]]),
               set_train_idx, set_test_idx, nClusts=best_lcs_soft_clusts, fuzziness = fuzz_soft, y=data_wide[["y"]])
       if (lcs_soft_set$converged) {
         mse_lcs_soft <- fit_linear(train_data=lcs_soft_set$train, test_data=lcs_soft_set$test_data)
