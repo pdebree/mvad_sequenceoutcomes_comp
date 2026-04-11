@@ -59,15 +59,15 @@ fuzz_soft <- 1.5
 
 # Arrays for holding outcomes fits 
 # soft clusters - 2 (because we never look at index=1 clusters and indexing is always from 1)
-mse.cv.harm_rf <- array(NA,c(folds,nHarms, nCovars + nHarms - 1 ))
-mse.cv.windows_rf <- array(NA,c(folds,nWindows, nCovars + nWindows - 1))
-mse.cv.om_trate_hard_rf <- array(NA,c(folds,nClusts, nCovars))
-mse.cv.om_trate_soft_rf <- array(NA,c(folds,nSoftClusts,nCovars + nSoftClusts - 2))
-mse.cv.om_slog_hard_rf <- array(NA,c(folds,nClusts, nCovars))
-mse.cv.om_slog_soft_rf <- array(NA,c(folds,nSoftClusts, nCovars + nSoftClusts - 2))
-mse.cv.lcs_hard_rf <- array(NA,c(folds,nClusts, nCovars))
-mse.cv.lcs_soft_rf <- array(NA,c(folds,nSoftClusts, nCovars + nSoftClusts - 2))
-mse.cv.rmets_rf <- array(NA,c(folds, nSeqPcs, nCovars + nSeqPcs - 1))
+mse.cv.harm_rf <- array(NA,c(folds,nHarms, floor(sqrt(nCovars + nHarms))))
+mse.cv.windows_rf <- array(NA,c(folds,nWindows, floor(sqrt(nCovars + nWindows))))
+mse.cv.om_trate_hard_rf <- array(NA,c(folds,nClusts, floor(sqrt(nCovars + nClusts - 1))))
+mse.cv.om_trate_soft_rf <- array(NA,c(folds,nSoftClusts, floor(sqrt(nCovars + nSoftClusts - 1))))
+mse.cv.om_slog_hard_rf <- array(NA,c(folds,nClusts, floor(sqrt(nCovars + nClusts - 1))))
+mse.cv.om_slog_soft_rf <- array(NA,c(folds,nSoftClusts, floor(sqrt(nCovars + nSoftClusts - 1))))
+mse.cv.lcs_hard_rf <- array(NA,c(folds,nClusts, floor(sqrt(nCovars + nClusts - 1))))
+mse.cv.lcs_soft_rf <- array(NA,c(folds,nSoftClusts, floor(sqrt(nCovars + nSoftClusts - 1))))
+mse.cv.rmets_rf <- array(NA,c(folds, nSeqPcs, floor(sqrt(nCovars + nSeqPcs - 1))))
 
 
 ### CFDA Cross Validation 
@@ -112,7 +112,7 @@ for (i in 1:folds) {
   colnames(pcs.test) <- paste0("PC",1:nComps)
 
   for (j in 1:nHarms) {
-    for (k in 1:(floor(sqrt(nCovars + j - 1)))) {
+    for (k in 1:(floor(sqrt(nCovars + j)))) {
         # create training set based on number of PCs to include
       train_harm <- mvad_covars[train_idx, ] %>% 
         add_column(as_tibble(pcs.train[, 1:j, drop = FALSE])) %>% 
@@ -171,7 +171,7 @@ for (i in 1:folds) {
   colnames(test_mvad_windows)[1] <- "num_month_em_last_year"
   
   for (j in 1:nWindows) {
-    for (k in 1:(floor(sqrt(nCovars + j - 1)))) {
+    for (k in 1:(floor(sqrt(nCovars + j)))) {
       mse.cv.windows_rf[i,j,k] <- train_mse_rf(
         train_data=train_mvad_windows[,1:(12+j)], test_data = test_mvad_windows, mtry=k)
     }
@@ -208,7 +208,7 @@ for (i in 1:folds) {
     test_om_soft <- soft_cluster_data$test_data
 
     # have to minus 2 because of indexing j from 2 (instead of 1 - can't look at 1 soft cluster)
-    for (k in 1:(floor(sqrt(nCovars + j - 2)))) {
+    for (k in 1:(floor(sqrt(nCovars + j - 1)))) {
 
       mse.cv.om_trate_hard_rf[i,j,k] <- train_mse_rf(train_data=train_om_hard, test_data=test_om_hard, mtry=k)
 
@@ -233,7 +233,7 @@ for (i in 1:folds) {
 
   # hard coded for OM-Trate
   for (j in 2:nClusts) {
-    
+
     # Create hard clusters
     hard_cluster_data <- hard_cluster_onehot(
       clusterward = clusterward_hard, nClusts=j, covars=mvad_covars, 
@@ -251,7 +251,7 @@ for (i in 1:folds) {
     train_om_soft <- soft_cluster_data$train_data
     test_om_soft <- soft_cluster_data$test_data
 
-    for (k in 1:(floor(sqrt(nCovars + j - 2)))) {
+    for (k in 1:(floor(sqrt(nCovars + j - 1)))) {
      
       mse.cv.om_slog_hard_rf[i,j,k] <- train_mse_rf(train_data=train_om_hard, test_data=test_om_hard, mtry=k)
       
@@ -289,7 +289,7 @@ for (i in 1:folds) {
     train_lcs_soft <- soft_cluster_data$train_data
     test_lcs_soft <- soft_cluster_data$test_data
     
-    for (k in 1:(floor(sqrt(nCovars + j - 2)))) {
+    for (k in 1:(floor(sqrt(nCovars + j - 1)))) {
 
       mse.cv.lcs_hard_rf[i,j,k] <- train_mse_rf(train_data=train_lcs_hard, test_data=test_lcs_hard, mtry=k)
 
@@ -355,7 +355,7 @@ for (i in 1:folds) {
     colnames(train_rmets)[1] <- "num_month_em_last_year"
     colnames(test_rmets)[1] <- "num_month_em_last_year"
     
-    for (k in 1:(floor(sqrt(nCovars + j - 1)))) {
+    for (k in 1:(floor(sqrt(nCovars + j)))) {
       mse.cv.rmets_rf[i,j,k] <- train_mse_rf(train_data=train_rmets, test_data=test_rmets, mtry=k)
     }
   }
@@ -373,11 +373,11 @@ best_n_seq_mets_pc <- which.min(seq_mets_pc_means_lm)
 # Old way for handling best way to do it 
 # data frame to hold best combinations - long makes more sense 
 mse.seq_clusts <- list()
-mse.seq_clusts$om_trate_hard <- array(NA,c(folds,nClusts,nCovars + 1))
+mse.seq_clusts$om_trate_hard <- array(NA,c(folds,nClusts,nCovars + nClusts - 1))
 mse.seq_clusts$om_trate_soft <-  array(NA,c(folds,nClusts,nCovars + nSoftClusts - 1))
-mse.seq_clusts$om_slog_hard <- array(NA,c(folds,nClusts,nCovars + 1))
+mse.seq_clusts$om_slog_hard <- array(NA,c(folds,nClusts,nCovars + nClusts - 1))
 mse.seq_clusts$om_slog_soft <- array(NA,c(folds,nClusts,nCovars + nSoftClusts - 1))
-mse.seq_clusts$lcs_hard <- array(NA,c(folds,nClusts,nCovars + 1))
+mse.seq_clusts$lcs_hard <- array(NA,c(folds,nClusts,nCovars + nClusts - 1))
 mse.seq_clusts$lcs_soft <- array(NA,c(folds,nClusts,nCovars + nSoftClusts - 1))
 
 
@@ -512,9 +512,9 @@ rmse.seqs_clusts$om_slog_soft <- sqrt(apply(min_mse.seq_clusts$om_slog_soft, 2, 
 rmse.seqs_clusts$lcs_hard <- sqrt(apply(min_mse.seq_clusts$lcs_hard, 2, mean))
 rmse.seqs_clusts$lcs_soft <- sqrt(apply(min_mse.seq_clusts$lcs_soft, 2, mean))
 
-saveRDS(min_mtry.seq_clusts, "NonLinearSEQMBestMtry.rds")
-saveRDS(min_mse.seq_clusts, "NonLinearSEQMMinMSE.rds")
-saveRDS(rmse.seqs_clusts, "NonLinearSEQMAverRMSE.rds")
+saveRDS(min_mtry.seq_clusts, "SQNonLinearSEQMBestMtry.rds")
+saveRDS(min_mse.seq_clusts, "SQNonLinearSEQMMinMSE.rds")
+saveRDS(rmse.seqs_clusts, "SQNonLinearSEQMAverRMSE.rds")
 
 
 # Overall Performance Tracking 
@@ -575,10 +575,10 @@ rmse.comp$lcs_soft <- sqrt(apply(min_mse$lcs_soft, 2, mean))
 
 
 
-saveRDS(mse.comp, "NonLinearCompFullMSEs.rds")
-saveRDS(min_mtry, "NonLinearCompBestMtry.rds")
-saveRDS(min_mse, "NonLinearCompBestMSE.rds")
-saveRDS(rmse.comp, "NonLinearCompAverRMSES.rds")
+saveRDS(mse.comp, "SQNonLinearCompFullMSEs.rds")
+saveRDS(min_mtry, "SQNonLinearCompBestMtry.rds")
+saveRDS(min_mse, "SQNonLinearCompBestMSE.rds")
+saveRDS(rmse.comp, "SQNonLinearCompAverRMSES.rds")
 
 
 method_labels <- c("om_trate_hard"="OM T-Rate (Hard)", 
@@ -599,7 +599,7 @@ colnames(rmse_plot_data) <- c("comps", "rmse", "method")
 rmse_plot_data$method <- method_labels[rmse_plot_data$method]
 
 
-pdf("NonLinearCompPlot.pdf",width=8,height=6) 
+pdf("SQonLinearCompPlot.pdf",width=8,height=6) 
 ggplot(data = rmse_plot_data, 
        aes(x = comps, y = rmse, color = method)) +
   geom_line(linewidth = 1) +
@@ -612,7 +612,7 @@ ggplot(data = rmse_plot_data,
 
 dev.off()
 
-saveRDS(rmse_plot_data, file="NonLinearCompetitionRMSE.rds")
+saveRDS(rmse_plot_data, file="SQNonLinearCompetitionRMSE.rds")
 
 
 
