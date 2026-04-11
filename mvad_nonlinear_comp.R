@@ -61,11 +61,11 @@ fuzz_soft <- 1.5
 # soft clusters - 2 (because we never look at index=1 clusters and indexing is always from 1)
 mse.cv.harm_rf <- array(NA,c(folds,nHarms, nCovars + nHarms - 1 ))
 mse.cv.windows_rf <- array(NA,c(folds,nWindows, nCovars + nWindows - 1))
-mse.cv.om_trate_hard_rf <- array(NA,c(folds,nClusts, nCovars))
+mse.cv.om_trate_hard_rf <- array(NA,c(folds,nClusts, nCovars + nClusts - 2))
 mse.cv.om_trate_soft_rf <- array(NA,c(folds,nSoftClusts,nCovars + nSoftClusts - 2))
-mse.cv.om_slog_hard_rf <- array(NA,c(folds,nClusts, nCovars))
+mse.cv.om_slog_hard_rf <- array(NA,c(folds,nClusts, nCovars + nClusts - 2))
 mse.cv.om_slog_soft_rf <- array(NA,c(folds,nSoftClusts, nCovars + nSoftClusts - 2))
-mse.cv.lcs_hard_rf <- array(NA,c(folds,nClusts, nCovars))
+mse.cv.lcs_hard_rf <- array(NA,c(folds,nClusts, nCovars + nClusts - 2))
 mse.cv.lcs_soft_rf <- array(NA,c(folds,nSoftClusts, nCovars + nSoftClusts - 2))
 mse.cv.rmets_rf <- array(NA,c(folds, nSeqPcs, nCovars + nSeqPcs - 1))
 
@@ -209,7 +209,6 @@ for (i in 1:folds) {
 
     # have to minus 2 because of indexing j from 2 (instead of 1 - can't look at 1 soft cluster)
     for (k in 1:(nCovars + j - 2)) {
-
       mse.cv.om_trate_hard_rf[i,j,k] <- train_mse_rf(train_data=train_om_hard, test_data=test_om_hard, mtry=k)
 
       # k is only evaluated for this j if the number of soft clusters is reached
@@ -373,11 +372,11 @@ best_n_seq_mets_pc <- which.min(seq_mets_pc_means_lm)
 # Old way for handling best way to do it 
 # data frame to hold best combinations - long makes more sense 
 mse.seq_clusts <- list()
-mse.seq_clusts$om_trate_hard <- array(NA,c(folds,nClusts,nCovars + 1))
+mse.seq_clusts$om_trate_hard <- array(NA,c(folds,nClusts,nCovars + nClusts - 1))
 mse.seq_clusts$om_trate_soft <-  array(NA,c(folds,nClusts,nCovars + nSoftClusts - 1))
-mse.seq_clusts$om_slog_hard <- array(NA,c(folds,nClusts,nCovars + 1))
+mse.seq_clusts$om_slog_hard <- array(NA,c(folds,nClusts,nCovars + nClusts - 1))
 mse.seq_clusts$om_slog_soft <- array(NA,c(folds,nClusts,nCovars + nSoftClusts - 1))
-mse.seq_clusts$lcs_hard <- array(NA,c(folds,nClusts,nCovars + 1))
+mse.seq_clusts$lcs_hard <- array(NA,c(folds,nClusts,nCovars + nClusts - 1))
 mse.seq_clusts$lcs_soft <- array(NA,c(folds,nClusts,nCovars + nSoftClusts - 1))
 
 

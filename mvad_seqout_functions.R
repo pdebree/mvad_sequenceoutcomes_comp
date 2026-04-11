@@ -328,35 +328,27 @@ hard_cluster <- function(clusterward, nClusts, covars, num_month_em_last_year, t
 
 hard_cluster_onehot <- function(clusterward, nClusts, covars, num_month_em_last_year, train_idx, test_idx, dist_matrix) {
   
+  all_clusters <- paste0("cluster_", 2:nClusts)
+
   cut1 <- cutree(clusterward,k=nClusts)
   clust1.fac <- factor(cut1)
   train_data <- covars[train_idx,] %>% mutate(cluster=clust1.fac, num_month_em_last_year=num_month_em_last_year[train_idx])
   
-
-  train_data <- train_data |> mutate(val = 1) |> 
-    tidyr::pivot_wider(
-      names_from = cluster, 
-      values_from = val, 
-      names_prefix = "cluster_",
-      values_fill = 0,             
-      values_fn = list(val = max)  
-    )  |> dplyr::select(-cl1)
-
+  # Create dummy columns for all expected clusters
+  for(col in all_clusters) {
+    train_data[[col]] <- as.integer(train_data$cluster == sub("cluster_", "", col))
+  }
+  train_data <- train_data %>% dplyr::select(-cluster)
 
   cut2 <- assign_new(dist_matrix,train_idx,cut1,test_idx)
   clust2.fac <- factor(cut2)
   test_data <- covars[test_idx,] %>% mutate(cluster=clust2.fac, num_month_em_last_year=num_month_em_last_year[test_idx])
-  
 
-  test_data <- test_data |> mutate(val = 1) |> 
-    tidyr::pivot_wider(
-      names_from = cluster, 
-      values_from = val, 
-      names_prefix = "cluster_",
-      values_fill = 0,             
-      values_fn = list(val = max)  
-    )  |> dplyr::select(-cl1)
-
+  # Create dummy columns for all expected clusters (can be empty )
+  for(col in all_clusters) {
+    test_data[[col]] <- as.integer(test_data$cluster == sub("cluster_", "", col)) 
+  }
+  test_data <- test_data %>% dplyr::select(-cluster)
 
   return(list(train_data=train_data, test_data=test_data))
 }
