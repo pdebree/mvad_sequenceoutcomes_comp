@@ -16,7 +16,7 @@ cl <- makeCluster(n_cores)
 registerDoParallel(cl)
 
 
-source("mvad_seqout_functions.R")
+source("seqout_utils.R")
 
 
 # Make the ordering of the methods strictly as follows: 
@@ -67,6 +67,22 @@ mse.sims$indep <- array(NA, c(nMethods, nSets))
 mse.sims$semi_concord <- array(NA, c(nMethods, nSets))
 mse.sims$semi <- array(NA, c(nMethods, nSets))
 
+
+cov.sims <- list()
+cov.sims$concord <- array(NA, c(nMethods, nSets))
+cov.sims$indep_semi <- array(NA, c(nMethods, nSets))
+cov.sims$indep <- array(NA, c(nMethods, nSets))
+cov.sims$semi_concord <- array(NA, c(nMethods, nSets))
+cov.sims$semi <- array(NA, c(nMethods, nSets))
+
+
+mpiw.sims <- list()
+mpiw.sims$concord <- array(NA, c(nMethods, nSets))
+mpiw.sims$indep_semi <- array(NA, c(nMethods, nSets))
+mpiw.sims$indep <- array(NA, c(nMethods, nSets))
+mpiw.sims$semi_concord <- array(NA, c(nMethods, nSets))
+mpiw.sims$semi <- array(NA, c(nMethods, nSets))
+
 # locations for training and testing sets - first 900 
 # are training, second 900 are testing. 
 set_train_idx <- c(rep(TRUE, 900), rep(FALSE, 900))
@@ -81,7 +97,6 @@ best_n_comps$indep_semi <- array(NA, c(nMethods, nSets))
 best_n_comps$indep <- array(NA, c(nMethods, nSets))
 best_n_comps$semi_concord <- array(NA, c(nMethods, nSets))
 best_n_comps$semi <- array(NA, c(nMethods, nSets))
-
 
 set_conv_train_track <- list()
 set_conv_train_track$om_trate <- set_conv_train_track$om_slog <- set_conv_train_track$lcs <- array(FALSE, c(folds, nSoft))
@@ -111,8 +126,6 @@ task_grid <- expand.grid(
   set_idx = 1:nSets,
   stringsAsFactors = FALSE
 )
-
-
 
 results <- foreach(m = 1:nrow(task_grid), .packages = c("tidyverse", "cluster", "TraMineR", "cfda", "TraMineRextras")) %dopar% {
   
@@ -316,6 +329,15 @@ results <- foreach(m = 1:nrow(task_grid), .packages = c("tidyverse", "cluster", 
   mse_cfda <- mse_wind <- mse_om_trate_hard <- NA
   mse_om_slog_hard <- mse_lcs_hard <- mse_om_trate_soft <- NA
   mse_om_slog_soft <- mse_lcs_soft <- NA
+
+  cov_cfda <- cov_wind <- cov_om_trate_hard <- NA
+  cov_om_slog_hard <- cov_lcs_hard <- cov_om_trate_soft <- NA
+  cov_om_slog_soft <- cov_lcs_soft <- NA
+
+  mpiw_cfda <- mpiw_wind <- mpiw_om_trate_hard <- NA
+  mpiw_om_slog_hard <- mpiw_lcs_hard <- mpiw_om_trate_soft <- NA
+  mpiw_om_slog_soft <- mpiw_lcs_soft <- NA
+
   
   # Fitting by best parameters
   best_cfda_harms <- which.min(apply(mse.cv[,,1], 2, mean, na.rm = TRUE))
@@ -353,15 +375,27 @@ results <- foreach(m = 1:nrow(task_grid), .packages = c("tidyverse", "cluster", 
   lcs_clusters_set <- hard_cluster_sim(clusterward_lcs_hard_set,
     best_lcs_hard_clusts, data_wide[["y"]], set_train_idx, set_test_idx, dists[[2]])
 
-  mse_om_trate_hard <- fit_linear(
+  hard_trate_set_fit <- fit_linear(
     train_data=om_trate_clusters_set$train_data, 
     test_data=om_trate_clusters_set$test_data)
-  mse_om_slog_hard <- fit_linear(
+  mse_om_trate_hard <- hard_trate_set_fit$mse
+  cov_om_trate_hard <- hard_trate_set_fit$coverage
+  mpiw_om_trate_hard <- hard_trate_set_fit$mpiw
+
+  hard_slog_set_fit <- fit_linear(
     train_data=om_slog_clusters_set$train_data, 
     test_data=om_slog_clusters_set$test_data)
-  mse_lcs_hard <- fit_linear(
+  mse_om_slog_hard <- hard_slog_set_fit$mse
+  cov_om_slog_hard <- hard_slog_set_fit$coverage
+  mpiw_om_slog_hard <- hard_slog_set_fit$mpiw
+
+  hard_lcs_set_fit <- fit_linear(
     train_data=lcs_clusters_set$train_data, 
     test_data=lcs_clusters_set$test_data)
+  mse_lcs_hard <- hard_lcs_set_fit$mse
+  cov_lcs_hard <- hard_lcs_set_fit$coverage
+  mpiw_lcs_hard <- hard_lcs_set_fit$mpiw
+
   
 
   # om trate soft 
@@ -370,12 +404,14 @@ results <- foreach(m = 1:nrow(task_grid), .packages = c("tidyverse", "cluster", 
     om_trate_soft_set <- soft_cluster_sim(dists[[1]],
             set_train_idx, set_test_idx, nClusts=best_trate_soft_clusts, fuzziness = fuzz_soft, y=data_wide[["y"]])
     if (om_trate_soft_set$converged) {
-      mse_om_trate_soft <- fit_linear(train_data=om_trate_soft_set$train, test_data=om_trate_soft_set$test_data)
+      soft_trate_set_fit <- fit_linear(train_data=om_trate_soft_set$train, test_data=om_trate_soft_set$test_data)
+      mse_om_trate_soft <- soft_trate_set_fit$mse
+      cov_om_trate_soft <- soft_trate_set_fit$coverage
+      mpiw_om_trate_soft <- soft_trate_set_fit$mpiw
     }
   } else {
-    mse_om_trate_soft <- NA
+    mse_om_trate_soft <- cov_om_trate_soft <- mpiw_om_trate_soft <- NA
     om_trate_soft_set <- list(converged = FALSE)
-
   }
 
   # om-slog soft 
@@ -383,10 +419,13 @@ results <- foreach(m = 1:nrow(task_grid), .packages = c("tidyverse", "cluster", 
     om_slog_soft_set <- soft_cluster_sim(dists[[3]],
             set_train_idx, set_test_idx, nClusts=best_slog_soft_clusts, fuzziness = fuzz_soft, y=data_wide[["y"]])
     if (om_slog_soft_set$converged) {
-      mse_om_slog_soft <- fit_linear(train_data=om_slog_soft_set$train, test_data=om_slog_soft_set$test_data)
+      soft_slog_set_fit <- fit_linear(train_data=om_slog_soft_set$train, test_data=om_slog_soft_set$test_data)
+      mse_om_slog_soft <- soft_slog_set_fit$mse
+      cov_om_slog_soft <- soft_slog_set_fit$coverage
+      mpiw_om_slog_soft <- soft_slog_set_fit$mpiw
     }
   } else {
-    mse_om_slog_soft <- NA
+    mse_om_slog_soft <- cov_om_slog_soft <- mpiw_om_slog_soft <- NA
     om_slog_soft_set <- list(converged = FALSE)
   }
 
@@ -396,10 +435,13 @@ results <- foreach(m = 1:nrow(task_grid), .packages = c("tidyverse", "cluster", 
     lcs_soft_set <- soft_cluster_sim(dists[[2]],
             set_train_idx, set_test_idx, nClusts=best_lcs_soft_clusts, fuzziness = fuzz_soft, y=data_wide[["y"]])
     if (lcs_soft_set$converged) {
-      mse_lcs_soft <- fit_linear(train_data=lcs_soft_set$train, test_data=lcs_soft_set$test_data)
+      soft_lcs_set_fit <- fit_linear(train_data=lcs_soft_set$train, test_data=lcs_soft_set$test_data)
+      mse_lcs_soft <- soft_lcs_set_fit$mse
+      cov_lcs_soft <- soft_lcs_set_fit$coverage
+      mpiw_lcs_soft <- soft_lcs_set_fit$mpiw
     }
   } else {
-    mse_lcs_soft <- NA
+    mse_lcs_soft <- cov_lcs_soft <- mpiw_lcs_soft <- NA
     lcs_soft_set <- list(converged = FALSE)
   }
 
@@ -413,7 +455,10 @@ results <- foreach(m = 1:nrow(task_grid), .packages = c("tidyverse", "cluster", 
   set_test_harm <- data.frame(y = y.test_set) %>% add_column(as_tibble(pcs.test_set[,1:best_cfda_harms]))
   colnames(set_test_harm) <- colnames(set_train_harm) # ensure names match
 
-  mse_cfda <- fit_linear(set_train_harm, set_test_harm)
+  cfda_set_fit <- fit_linear(set_train_harm, set_test_harm)
+  mse_cfda <- cfda_set_fit$mse
+  cov_cfda <- cfda_set_fit$coverage
+  mpiw_cfda <- cfda_set_fit$mpiw
   
 
   # Windows - refit
@@ -426,9 +471,12 @@ results <- foreach(m = 1:nrow(task_grid), .packages = c("tidyverse", "cluster", 
   set_train_windows <- cbind(as.data.frame(y.train_set), set_train_scores)
   set_test_windows <- cbind(as.data.frame(y.test_set), set_test_scores)
   
-  mse_wind <- fit_linear(
+  wind_fit <- fit_linear(
     train_data=cbind(as.data.frame(y.train_set), set_train_scores),
     test_data=cbind(as.data.frame(y.test_set), set_test_scores))   
+  mse_wind <- wind_fit$mse
+  cov_wind <- wind_fit$coverage
+  mpiw_wind <- wind_fit$mpiw
   
 # return section (for this one file-set combination)
 list(
@@ -436,6 +484,10 @@ list(
       set_idx = n,
       mses = c(mse_cfda, mse_wind, mse_om_trate_hard, mse_om_slog_hard, mse_lcs_hard, mse_om_trate_soft, 
         mse_om_slog_soft, mse_lcs_soft),
+      covs = c(cov_cfda, cov_wind, cov_om_trate_hard, cov_om_slog_hard, cov_lcs_hard, cov_om_trate_soft, 
+        cov_om_slog_soft, cov_lcs_soft),
+      mpiw = c(mpiw_cfda, mpiw_wind, mpiw_om_trate_hard, mpiw_om_slog_hard, mpiw_lcs_hard, mpiw_om_trate_soft, 
+        mpiw_om_slog_soft, mpiw_lcs_soft),
       best_k = c(best_cfda_harms, best_windows_pcs, best_trate_hard_clusts, best_slog_hard_clusts,
         best_lcs_hard_clusts, best_trate_soft_clusts,best_slog_soft_clusts, best_lcs_soft_clusts), 
       set_conv_train_track = set_conv_train_track,
@@ -452,6 +504,8 @@ for(result in results) {
   n <- result$set_idx
   
   mse.sims[[g]][, n] <- result$mses
+  cov.sims[[g]][,n] <- result$covs
+  mpiw.sims[[g]][, n] <- result$mpiw
   best_n_comps[[g]][, n] <- result$best_k
   train_conv_tracker[[g]][[n]][["om_trate"]] <- result$set_conv_train_track$om_trate
   train_conv_tracker[[g]][[n]][["om_slog"]] <- result$set_conv_train_track$om_slog
@@ -503,6 +557,8 @@ dev.off()
 
 # Save data from full run 
 saveRDS(mse.sims, paste0(sim_type,"_full_mses.rds"))
+saveRDS(cov.sims, paste0(sim_type,"_full_coveragess.rds"))
+saveRDS(mpiw.sims, paste0(sim_type,"_full_mpiws.rds"))
 saveRDS(best_n_comps, paste0(sim_type,"_best_n_comps.rds"))
 saveRDS(train_conv_tracker, paste0(sim_type, "_train_conv_tracker.rds"))
 saveRDS(plot_data, paste0(sim_type, "_RMSE_performance.rds"))
