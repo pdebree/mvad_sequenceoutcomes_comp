@@ -363,11 +363,11 @@ for (i in 1:folds) {
 # Find the minimum performance for each fold-cluster combination 
 # essentially this gets rid of all non-optimal performances (as meausured by mtry)
 seq_mets_mins <- apply(mse.cv.rmets_rf, c(1, 2), min, na.rm = TRUE)
-seq_mets_min_mtry <- apply(mse.cv.rmets_rf, c(1, 2), which.min)
+seq_mets_min_mtry <- apply(mse.cv.rmets_rf, c(1, 2), safe_which_min)
 
 # find average of best performances (by mtry) across folds 
 seq_mets_pc_means_lm <- sqrt(apply(seq_mets_mins, 2, mean))
-best_n_seq_mets_pc <- which.min(seq_mets_pc_means_lm)
+best_n_seq_mets_pc <- safe_which_min(seq_mets_pc_means_lm)
 
 # Old way for handling best way to do it 
 # data frame to hold best combinations - long makes more sense 
@@ -524,8 +524,6 @@ saveRDS(rmse.seqs_clusts, "NonLinearSEQMAverRMSE.rds")
 # these
 
 
-
-
 mse.comp <- list()
 mse.comp$om_trate_hard <- mse.cv.om_trate_hard_rf
 mse.comp$om_trate_soft <- mse.cv.om_trate_soft_rf
@@ -540,14 +538,14 @@ mse.comp$harm <- mse.cv.harm_rf
 
 # keep actual mtry values to know optimal performances across fold and number of components 
 min_mtry <- list()
-min_mtry$harm_rf_min_mtry <- apply(mse.cv.harm_rf, c(1,2), which.min)
-min_mtry$windows_rf_min_mtry <- apply(mse.cv.windows_rf , c(1,2), which.min)
-min_mtry$om_trate_hard_rf_min_mtry <- apply(mse.cv.om_trate_hard_rf , c(1,2), which.min)
-min_mtry$om_trate_soft_rf_min_mtry <- apply(mse.cv.om_trate_soft_rf,  c(1,2), which.min)
-min_mtry$om_slog_hard_rf_min_mtry <- apply(mse.cv.om_slog_hard_rf , c(1,2), which.min)
-min_mtry$om_slog_soft_rf_min_mtry <- apply(mse.cv.om_slog_soft_rf , c(1,2), which.min)
-min_mtry$cs_hard_rf_min_mtry <- apply(mse.cv.lcs_hard_rf, c(1,2), which.min)
-min_mtry$lcs_soft_rf_min_mtry <- apply(mse.cv.lcs_soft_rf, c(1,2), which.min)
+min_mtry$harm_rf_min_mtry <- apply(mse.cv.harm_rf, c(1,2), safe_which_min)
+min_mtry$windows_rf_min_mtry <- apply(mse.cv.windows_rf , c(1,2), safe_which_min)
+min_mtry$om_trate_hard_rf_min_mtry <- apply(mse.cv.om_trate_hard_rf , c(1,2), safe_which_min)
+min_mtry$om_trate_soft_rf_min_mtry <- apply(mse.cv.om_trate_soft_rf,  c(1,2), safe_which_min)
+min_mtry$om_slog_hard_rf_min_mtry <- apply(mse.cv.om_slog_hard_rf , c(1,2), safe_which_min)
+min_mtry$om_slog_soft_rf_min_mtry <- apply(mse.cv.om_slog_soft_rf , c(1,2), safe_which_min)
+min_mtry$cs_hard_rf_min_mtry <- apply(mse.cv.lcs_hard_rf, c(1,2), safe_which_min)
+min_mtry$lcs_soft_rf_min_mtry <- apply(mse.cv.lcs_soft_rf, c(1,2), safe_which_min)
 
 # First find the minimum across dim 1 and 2 (this essentially gets the best performance
 # by each combination)
