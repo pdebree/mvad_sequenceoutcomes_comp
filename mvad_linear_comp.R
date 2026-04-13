@@ -219,10 +219,13 @@ for (i in 1:folds) {
   pca_windows_train <- prcomp(x=mvad_windows[12:27][train_idx,], center=TRUE, scale=TRUE)
   train_scores <- pca_windows_train$x
   test_scores <- predict(pca_windows_train, newdata = mvad_windows[12:27][test_idx, ]) 
+
+  colnames(train_scores) <- paste0("PC", 1:ncol(train_scores))
+  colnames(test_scores) <- paste0("PC", 1:ncol(test_scores))
   
   # add principal components to demographic data (no longer need original windows)
-  train_mvad_windows <- cbind(mvad_windows[1:11][train_idx,], train_scores)
-  test_mvad_windows <- cbind(mvad_windows[1:11][test_idx,], test_scores)
+  train_mvad_windows <- cbind(mvad_windows[1:11][train_idx,], as.data.frame(train_scores))
+  test_mvad_windows <- cbind(mvad_windows[1:11][test_idx,], as.data.frame(test_scores))
   
   for (j in 1:nWindows) {
 
@@ -379,8 +382,8 @@ for (i in 1:folds) {
   train_scores <- pca_comps_train$x
   test_scores <- predict(pca_comps_train, newdata =rmetrics[test_idx, ]) 
   
-  train_mvad_rmets <- cbind(mvad_covars[train_idx,], train_scores)
-  test_mvad_rmets <- cbind(mvad_covars[test_idx,], test_scores)
+  train_mvad_rmets <- cbind(mvad_covars[train_idx,], as.data.frame(train_scores))
+  test_mvad_rmets <- cbind(mvad_covars[test_idx,], as.data.frame(test_scores))
   
   # find best performance in fold 
   for (j in 1:nSeqPcs) {
@@ -439,43 +442,42 @@ for (i in 1:folds) {
 
     om_trate_clustered_hard <- hard_cluster(clusterward = clusterward_hard_trate, nClusts = j, 
       covars=mvad_covars, y=num_month_em_last_year, train_idx, test_idx, dists[[1]])
-    om_trate_hard_train <- cbind(om_trate_clustered_hard$train_data, train_scores) 
-    om_trate_hard_test <- cbind(om_trate_clustered_hard$test_data, test_scores) 
+    om_trate_hard_train <- cbind(om_trate_clustered_hard$train_data, as.data.frame(train_scores))
+    om_trate_hard_test <- cbind(om_trate_clustered_hard$test_data, as.data.frame(test_scores))
     
     mse.seq_clusts[["om_trate_hard"]][i, j] <- fit_linear(
         train_data = om_trate_hard_train, 
         test_data = om_trate_hard_test)$mse
     
     # om-slog hard
-  om_slog_clustered_hard <- hard_cluster(clusterward = clusterward_hard_slog, nClusts = j, 
-      covars=mvad_covars, y=num_month_em_last_year, train_idx, test_idx, dists[[3]])
-  
-  om_slog_hard_train <- cbind(om_slog_clustered_hard$train_data, train_scores)
-  om_slog_hard_test <- cbind(om_slog_clustered_hard$test_data, test_scores) 
+    om_slog_clustered_hard <- hard_cluster(clusterward = clusterward_hard_slog, nClusts = j, 
+        covars=mvad_covars, y=num_month_em_last_year, train_idx, test_idx, dists[[3]])
     
-  mse.seq_clusts[["om_slog_hard"]][i, j] <- fit_linear(
-        train_data = om_slog_hard_train, 
-        test_data = om_slog_hard_test)$mse
+    om_slog_hard_train <- cbind(om_slog_clustered_hard$train_data, as.data.frame(train_scores))
+    om_slog_hard_test <- cbind(om_slog_clustered_hard$test_data, as.data.frame(test_scores))
+      
+    mse.seq_clusts[["om_slog_hard"]][i, j] <- fit_linear(
+          train_data = om_slog_hard_train, 
+          test_data = om_slog_hard_test)$mse
 
       
-  # lcs hard
-  lcs_clustered_hard <- hard_cluster(clusterward = clusterward_hard_lcs, nClusts = j, 
-      covars=mvad_covars, y=num_month_em_last_year, train_idx, test_idx, dists[[2]])
-    lcs_hard_train <- cbind(lcs_clustered_hard$train_data, train_scores) 
-    lcs_hard_test <- cbind(lcs_clustered_hard$test_data, test_scores) 
-    
-    mse.seq_clusts[["lcs_hard"]][i, j] <- fit_linear(
-        train_data = lcs_hard_train, 
-        test_data = lcs_hard_test)$mse
-    
+    # lcs hard
+    lcs_clustered_hard <- hard_cluster(clusterward = clusterward_hard_lcs, nClusts = j, 
+        covars=mvad_covars, y=num_month_em_last_year, train_idx, test_idx, dists[[2]])
+    lcs_hard_train <- cbind(lcs_clustered_hard$train_data, as.data.frame(train_scores))
+    lcs_hard_test <- cbind(lcs_clustered_hard$test_data, as.data.frame(test_scores))
+      
+
+    mse.seq_clusts[["lcs_hard"]][i, j] <- fit_linear(train_data = lcs_hard_train, test_data = lcs_hard_test)$mse
+      
   # om-trate soft
     if (j < nSoftClusts) {
       om_trate_clustered_soft <- soft_cluster(dists[[1]], train_idx, test_idx = test_idx,
         nClusts = j,fuzziness=fuzz_soft, covars = mvad_covars, y = num_month_em_last_year)
       
       if (om_trate_clustered_soft$converged) {
-        om_trate_soft_train <- cbind(om_trate_clustered_soft$train_data, train_scores) 
-        om_trate_soft_test <- cbind(om_trate_clustered_soft$test_data, test_scores) 
+        om_trate_soft_train <- cbind(om_trate_clustered_soft$train_data, as.data.frame(train_scores))
+        om_trate_soft_test <- cbind(om_trate_clustered_soft$test_data, as.data.frame(test_scores)) 
         mse.seq_clusts[["om_trate_soft"]][i,j] <- fit_linear(
             train_data = om_trate_soft_train, 
             test_data = om_trate_soft_test)$mse
@@ -485,21 +487,19 @@ for (i in 1:folds) {
       om_slog_clustered_soft <- soft_cluster(dists[[3]], train_idx, test_idx = test_idx,
         nClusts = j,fuzziness=fuzz_soft, covars = mvad_covars, y = num_month_em_last_year)
       if (om_slog_clustered_soft$converged) {
-        om_slog_soft_train <- cbind(om_slog_clustered_soft$train_data, train_scores) 
-        om_slog_soft_test <- cbind(om_slog_clustered_soft$test_data, test_scores)
+        om_slog_soft_train <- cbind(om_slog_clustered_soft$train_data, as.data.frame(train_scores))
+        om_slog_soft_test <- cbind(om_slog_clustered_soft$test_data, as.data.frame(test_scores))
         mse.seq_clusts[["om_slog_soft"]][i,j] <- fit_linear(
             train_data = om_slog_soft_train, 
             test_data = om_slog_soft_test)$mse
       }
 
-
-
       # lcs soft 
       lcs_clustered_soft <- soft_cluster(dists[[2]], train_idx, test_idx = test_idx,
         nClusts = j,fuzziness=fuzz_soft, covars = mvad_covars, y = num_month_em_last_year)
       if (lcs_clustered_soft$converged) {
-        lcs_soft_train <- cbind(lcs_clustered_soft$train_data, train_scores) 
-        lcs_soft_test <- cbind(lcs_clustered_soft$test_data, test_scores) 
+        lcs_soft_train <- cbind(lcs_clustered_soft$train_data, as.data.frame(train_scores))
+        lcs_soft_test <- cbind(lcs_clustered_soft$test_data, as.data.frame(test_scores))
         mse.seq_clusts[["lcs_soft"]][i,j] <- fit_linear(
             train_data = lcs_soft_train, 
             test_data = lcs_soft_test)$mse
@@ -577,3 +577,4 @@ saveRDS(rmse.frame, file="LinearCompetitionRMSE.rds")
 
 
   
+

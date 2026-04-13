@@ -473,7 +473,7 @@ for (i in 1:folds) {
       
     }
 
-    for (k in 1:(nCovars + best_n_seq_mets_pc + j - 1)) {
+    for (k in 1:(nCovars + best_n_seq_mets_pc + j - 2)) {
 
       hard_seq_trate_fit <- fit_rf(
         train_data = om_trate_hard_train, 
