@@ -46,7 +46,7 @@ sim_types <- c(
   "very_hard_seqs"
 )
 
-sim_type <- "hard_seqs"
+sim_type <- "dar_med_seqs"
 
 # Data is stored in directory based on the difficulty types.
 # The "hard_seqs" directory contains the following files)
@@ -547,7 +547,7 @@ ggplot(plot_data, aes(x = Method, y = Mean_MSE, color = Simulation_Type, group =
   geom_point(size = 3) +
   theme_minimal(base_size = 14) + # Makes text a bit more readable
   labs(
-    title = "Mean RMSE per Method - Hard Difficulty",
+    title = "Mean RMSE per Method - Medium (DAR) Difficulty",
     x = "Method",
     y = "Average RMSE (of Best Number of Components)",
     color = "Simulation Type"

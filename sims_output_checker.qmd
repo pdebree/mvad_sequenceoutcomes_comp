@@ -1,0 +1,399 @@
+---
+title: "Checking Simulations Output"
+format: pdf
+---
+
+
+Library Imports 
+
+```{r}
+library(tidyverse)
+
+sim_name <- "sims_output/conv_sim/"
+
+seq_types <- c("concord", "indep_semi", "indep", "semi_concord",  "semi")
+
+```
+
+
+Essentially for every simulation I need to check the the best number of components comes from a mse that has no missing values 
+
+Then I need to check that best performance for testing only is included if there is no convergence errors. 
+
+
+Easy Data 
+
+```{r}
+
+easy_best_n_comps <- readRDS(paste0(sim_name, "easy_cov/easy_seqs_best_n_comps.RDS"))
+easy_full_mses <- readRDS(paste0(sim_name, "easy_cov/easy_seqs_full_mses.RDS"))
+easy_RMSE <- readRDS(paste0(sim_name, "easy_cov/easy_seqs_RMSE_performance.rds"))
+easy_train_conv <- readRDS(paste0(sim_name, "easy_cov/easy_seqs_train_conv_tracker.rds"))
+
+# Check if all training converged: 
+for (seq_type in seq_types){
+    
+    lcs_total <- rep(NA, 150)
+    om_trate_total <- rep(NA, 150)
+    om_slog_total <- rep(NA, 150)
+
+    # essentially want to find the sum across all of the groups and hope it equals 4*10
+    for (n in 1:150) {
+        lcs_total[n] <- sum(easy_train_conv[[seq_type]][[n]]$lcs)
+        om_trate_total[n] <- sum(easy_train_conv[[seq_type]][[n]]$om_trate)
+        om_slog_total[n] <- sum(easy_train_conv[[seq_type]][[n]]$om_slog)
+    }
+    
+    # cat("Total number of lcs non-convergences in ", seq_type, " for easy: ", 150*40 - sum(lcs_total), "\n")
+    # cat("Total number of om_trate non-convergences in ", seq_type, " for easy: ", 150*40 - sum(om_trate_total), "\n")
+    # cat("Total number of om_slog non-convergences in ", seq_type, " for easy: ", 150*40 - sum(om_slog_total), "\n")
+    # cat("\n\n")
+
+
+    # Calculating best n comps - highest frequency or average? 
+    cat("Mean Best Number of CFDA Harmonics in ", seq_type, "for easy: ", 
+        mean(easy_best_n_comps[[seq_type]][1,]), "\n")
+    cat("Mean Best Number of Windows in ", seq_type, "for easy: ", 
+        mean(easy_best_n_comps[[seq_type]][2,]), "\n")
+    cat("Mean Best Number of OM-Trate Hard Clusters in ", seq_type, "for easy: ", 
+        mean(easy_best_n_comps[[seq_type]][3,]), "\n")
+    cat("Mean Best Number of  OM-SLOG Hard Clusters in ", seq_type, "for easy: ", 
+        mean(easy_best_n_comps[[seq_type]][4,]), "\n")
+    cat("Mean Best Number of LCS Hard Clusters in ", seq_type, "for easy: ", 
+        mean(easy_best_n_comps[[seq_type]][5,]), "\n")
+    cat("Mean Best Number of OM-Trate Soft Clusters in ", seq_type, "for easy: ", 
+        mean(easy_best_n_comps[[seq_type]][6,]), "\n")
+    cat("Mean Best Number of  OM-SLOG Soft Clusters in ", seq_type, "for easy: ", 
+        mean(easy_best_n_comps[[seq_type]][7,]), "\n")
+    cat("Mean Best Number of LCS SoftClusters in ", seq_type, "for easy: ", 
+        mean(easy_best_n_comps[[seq_type]][8,]), "\n")
+    cat("\n\n")
+
+}
+
+```
+
+
+Medium Data
+
+```{r}
+
+med_best_n_comps <- readRDS(paste0(sim_name, "med_cov/med_seqs_best_n_comps.RDS"))
+med_full_mses <- readRDS(paste0(sim_name, "med_cov/med_seqs_full_mses.RDS"))
+med_RMSE <- readRDS(paste0(sim_name, "med_cov/med_seqs_RMSE_performance.rds"))
+med_train_conv <- readRDS(paste0(sim_name, "med_cov/med_seqs_train_conv_tracker.rds"))
+
+# Check if all training converged: 
+for (seq_type in seq_types){
+    
+    lcs_total <- rep(NA, 150)
+    om_trate_total <- rep(NA, 150)
+    om_slog_total <- rep(NA, 150)
+
+    # essentially want to find the sum across all of the groups and hope it equals 4*10
+    for (n in 1:150) {
+        lcs_total[n] <- sum(med_train_conv[[seq_type]][[n]]$lcs)
+        om_trate_total[n] <- sum(med_train_conv[[seq_type]][[n]]$om_trate)
+        om_slog_total[n] <- sum(med_train_conv[[seq_type]][[n]]$om_slog)
+    }
+    
+    # cat("Total number of lcs non-convergences in ", seq_type, " for medium: ", 150*40 - sum(lcs_total), "\n")
+    # cat("Total number of om_trate non-convergences in ", seq_type, " for medium: ", 150*40 - sum(om_trate_total), "\n")
+    # cat("Total number of om_slog non-convergences in ", seq_type, " for mediun: ", 150*40 - sum(om_slog_total), "\n")
+    # cat("\n\n")
+
+        # Calculating best n comps - highest frequency or average? 
+    cat("Mean Best Number of CFDA Harmonics in ", seq_type, "for medium: ", 
+        mean(med_best_n_comps[[seq_type]][1,]), "\n")
+    cat("Mean Best Number of Windows in ", seq_type, "for easy: ", 
+        mean(med_best_n_comps[[seq_type]][2,]), "\n")
+    cat("Mean Best Number of OM-Trate Hard Clusters in ", seq_type, "for medium: ", 
+        mean(med_best_n_comps[[seq_type]][3,]), "\n")
+    cat("Mean Best Number of  OM-SLOG Hard Clusters in ", seq_type, "for medium: ", 
+        mean(med_best_n_comps[[seq_type]][4,]), "\n")
+    cat("Mean Best Number of LCS Hard Clusters in ", seq_type, "for medium: ", 
+        mean(med_best_n_comps[[seq_type]][5,]), "\n")
+    cat("Mean Best Number of OM-Trate Soft Clusters in ", seq_type, "for medium: ", 
+        mean(med_best_n_comps[[seq_type]][6,]), "\n")
+    cat("Mean Best Number of  OM-SLOG Soft Clusters in ", seq_type, "for medium: ", 
+        mean(med_best_n_comps[[seq_type]][7,]), "\n")
+    cat("Mean Best Number of LCS SoftClusters in ", seq_type, "for medium: ", 
+        mean(med_best_n_comps[[seq_type]][8,]), "\n")
+    cat("\n\n")
+}
+
+```
+
+
+Medium (DAR) Data
+
+```{r}
+
+dar_med_best_n_comps <- readRDS(paste0(sim_name, "dar_med_cov/dar_med_seqs_best_n_comps.RDS"))
+dar_med_full_mses <- readRDS(paste0(sim_name, "dar_med_cov/dar_med_seqs_full_mses.RDS"))
+dar_med_RMSE <- readRDS(paste0(sim_name, "dar_med_cov/dar_med_seqs_RMSE_performance.rds"))
+dar_med_train_conv <- readRDS(paste0(sim_name, "dar_med_cov/dar_med_seqs_train_conv_tracker.rds"))
+
+# Check if all training converged: 
+for (seq_type in seq_types){
+    
+    lcs_total <- rep(NA, 150)
+    om_trate_total <- rep(NA, 150)
+    om_slog_total <- rep(NA, 150)
+
+    # essentially want to find the sum across all of the groups and hope it equals 4*10
+    for (n in 1:150) {
+        lcs_total[n] <- sum(dar_med_train_conv[[seq_type]][[n]]$lcs)
+        om_trate_total[n] <- sum(dar_med_train_conv[[seq_type]][[n]]$om_trate)
+        om_slog_total[n] <- sum(dar_med_train_conv[[seq_type]][[n]]$om_slog)
+    }
+    
+    # cat("Total number of lcs non-convergences in ", seq_type, " for dar medium: ", 150*40 - sum(lcs_total), "\n")
+    # cat("Total number of om_trate non-convergences in ", seq_type, " for dar medium: ", 150*40 - sum(om_trate_total), "\n")
+    # cat("Total number of om_slof non-convergences in ", seq_type, " for dar medium: ", 150*40 - sum(om_slog_total), "\n")
+    # cat("\n\n")
+
+            # Calculating best n comps - highest frequency or average? 
+    cat("Mean Best Number of CFDA Harmonics in ", seq_type, "for dar medium: ", 
+        mean(dar_med_best_n_comps[[seq_type]][1,]), "\n")
+    cat("Mean Best Number of Windows in ", seq_type, "for dar medium: ", 
+        mean(dar_med_best_n_comps[[seq_type]][2,]), "\n")
+    cat("Mean Best Number of OM-Trate Hard Clusters in ", seq_type, "for dar medium: ", 
+        mean(dar_med_best_n_comps[[seq_type]][3,]), "\n")
+    cat("Mean Best Number of  OM-SLOG Hard Clusters in ", seq_type, "for dar medium: ", 
+        mean(dar_med_best_n_comps[[seq_type]][4,]), "\n")
+    cat("Mean Best Number of LCS Hard Clusters in ", seq_type, "for dar medium: ", 
+        mean(dar_med_best_n_comps[[seq_type]][5,]), "\n")
+    cat("Mean Best Number of OM-Trate Soft Clusters in ", seq_type, "for dar medium: ", 
+        mean(dar_med_best_n_comps[[seq_type]][6,]), "\n")
+    cat("Mean Best Number of  OM-SLOG Soft Clusters in ", seq_type, "for dar medium: ", 
+        mean(dar_med_best_n_comps[[seq_type]][7,]), "\n")
+    cat("Mean Best Number of LCS Soft Clusters in ", seq_type, "for dar medium: ", 
+        mean(dar_med_best_n_comps[[seq_type]][8,]), "\n")
+    cat("\n\n")
+}
+
+```
+
+
+Hard Data 
+
+```{r}
+
+hard_best_n_comps <- readRDS(paste0(sim_name, "hard_cov/hard_seqs_best_n_comps.RDS"))
+hard_full_mses <- readRDS(paste0(sim_name, "hard_cov/hard_seqs_full_mses.RDS"))
+hard_RMSE <- readRDS(paste0(sim_name, "hard_cov/hard_seqs_RMSE_performance.rds"))
+hard_train_conv <- readRDS(paste0(sim_name, "hard_cov/hard_seqs_train_conv_tracker.rds"))
+# Check if all training converged: 
+for (seq_type in seq_types){
+    
+    lcs_total <- rep(NA, 150)
+    om_trate_total <- rep(NA, 150)
+    om_slog_total <- rep(NA, 150)
+
+    # essentially want to find the sum across all of the groups and hope it equals 4*10
+    for (n in 1:150) {
+        lcs_total[n] <- sum(hard_train_conv[[seq_type]][[n]]$lcs)
+        om_trate_total[n] <- sum(hard_train_conv[[seq_type]][[n]]$om_trate)
+        om_slog_total[n] <- sum(hard_train_conv[[seq_type]][[n]]$om_slog)
+
+    }
+    
+    # cat("Total number of lcs non-convergences in ", seq_type, " for hard: ", 150*40 - sum(lcs_total), "\n")
+    # cat("Total number of om_trate non-convergences in ", seq_type, " for hard: ", 150*40 - sum(om_trate_total), "\n")
+    # cat("Total number of om_slof non-convergences in ", seq_type, " for hard: ", 150*40 - sum(om_slog_total), "\n")
+
+                # Calculating best n comps - highest frequency or average? 
+    cat("Mean Best Number of CFDA Harmonics in ", seq_type, "for hard ", 
+        mean(hard_best_n_comps[[seq_type]][1,]), "\n")
+    cat("Mean Best Number of Windows in ", seq_type, "for hard: ", 
+        mean(hard_best_n_comps[[seq_type]][2,]), "\n")
+    cat("Mean Best Number of OM-Trate Hard Clusters in ", seq_type, "for hard: ", 
+        mean(hard_best_n_comps[[seq_type]][3,]), "\n")
+    cat("Mean Best Number of  OM-SLOG Hard Clusters in ", seq_type, "for hard: ", 
+        mean(hard_best_n_comps[[seq_type]][4,]), "\n")
+    cat("Mean Best Number of LCS Hard Clusters in ", seq_type, "for hard: ", 
+        mean(hard_best_n_comps[[seq_type]][5,]), "\n")
+    cat("Mean Best Number of OM-Trate Soft Clusters in ", seq_type, "for hard: ", 
+        mean(hard_best_n_comps[[seq_type]][6,]), "\n")
+    cat("Mean Best Number of  OM-SLOG Soft Clusters in ", seq_type, "for hard: ", 
+        mean(hard_best_n_comps[[seq_type]][7,]), "\n")
+    cat("Mean Best Number of LCS Soft Clusters in ", seq_type, "for hard: ", 
+        mean(hard_best_n_comps[[seq_type]][8,]), "\n")
+    cat("\n\n")
+}
+
+```
+
+Very Hard Data
+
+```{r}
+
+very_hard_best_n_comps <- readRDS(paste0(sim_name, "very_hard_cov/very_hard_seqs_best_n_comps.RDS"))
+very_hard_full_mses <- readRDS(paste0(sim_name, "very_hard_cov/very_hard_seqs_full_mses.RDS"))
+very_hard_RMSE <- readRDS(paste0(sim_name, "very_hard_cov/very_hard_seqs_RMSE_performance.rds"))
+very_hard_train_conv <- readRDS(paste0(sim_name, "very_hard_cov/very_hard_seqs_train_conv_tracker.rds"))
+
+# Check if all training converged: 
+for (seq_type in seq_types){
+    
+    lcs_total <- rep(NA, 150)
+    om_trate_total <- rep(NA, 150)
+    om_slog_total <- rep(NA, 150)
+
+    # essentially want to find the sum across all of the groups and hope it equals 4*10
+    for (n in 1:150) {
+        lcs_total[n] <- sum(very_hard_train_conv[[seq_type]][[n]]$lcs)
+        om_trate_total[n] <- sum(very_hard_train_conv[[seq_type]][[n]]$om_trate)
+        om_slog_total[n] <- sum(very_hard_train_conv[[seq_type]][[n]]$om_slog)
+    }
+    
+    # cat("Total number of lcs non-convergences in ", seq_type, " for easy: ", 150*40 - sum(lcs_total), "\n")
+    # cat("Total number of om_trate non-convergences in ", seq_type, " for easy: ", 150*40 - sum(om_trate_total), "\n")
+    # cat("Total number of om_slof non-convergences in ", seq_type, " for easy: ", 150*40 - sum(om_slog_total), "\n")
+
+
+    # Calculating best n comps - highest frequency or average? 
+    cat("Mean Best Number of CFDA Harmonics in ", seq_type, "for very hard ", 
+        mean(very_hard_best_n_comps[[seq_type]][1,]), "\n")
+    cat("Mean Best Number of Windows in ", seq_type, "for very hard: ", 
+        mean(very_hard_best_n_comps[[seq_type]][2,]), "\n")
+    cat("Mean Best Number of OM-Trate Hard Clusters in ", seq_type, "for very hard: ", 
+        mean(very_hard_best_n_comps[[seq_type]][3,]), "\n")
+    cat("Mean Best Number of  OM-SLOG Hard Clusters in ", seq_type, "for very hard: ", 
+        mean(very_hard_best_n_comps[[seq_type]][4,]), "\n")
+    cat("Mean Best Number of LCS Hard Clusters in ", seq_type, "for very hard: ", 
+        mean(very_hard_best_n_comps[[seq_type]][5,]), "\n")
+    cat("Mean Best Number of OM-Trate Soft Clusters in ", seq_type, "for very hard: ", 
+        mean(very_hard_best_n_comps[[seq_type]][6,]), "\n")
+    cat("Mean Best Number of  OM-SLOG Soft Clusters in ", seq_type, "for very hard: ", 
+        mean(very_hard_best_n_comps[[seq_type]][7,]), "\n")
+    cat("Mean Best Number of LCS SoftClusters in ", seq_type, "for very hard: ", 
+        mean(very_hard_best_n_comps[[seq_type]][8,]), "\n")
+    cat("\n\n")
+
+    # Number of non converged soft clusters 
+
+    cat("Mean Best Number of  OM-SLOG Soft Clusters in ", seq_type, "for very hard: ", 
+        mean(very_hard_best_n_comps[[seq_type]][7,]), "\n")
+    cat("Mean Best Number of LCS SoftClusters in ", seq_type, "for very hard: ", 
+        mean(very_hard_best_n_comps[[seq_type]][8,]), "\n")
+    cat("\n\n")
+
+}
+
+```
+
+
+
+
+
+
+Covergence Plots 
+
+```{r}
+filep <- "sims_output/conv_sim/"
+
+hard_covs <- readRDS(paste0(filep, "hard_cov/hard_seqs_full_coveragess.rds"))
+med_covs <- readRDS(paste0(filep, "med_cov/med_seqs_full_coverages.rds"))
+dar_med_covs <- readRDS(paste0(filep, "dar_med_cov/dar_med_seqs_full_coverages.rds"))
+easy_covs <- readRDS(paste0(filep, "easy_cov/easy_seqs_full_coverages.rds"))
+very_hard_covs <- readRDS(paste0(filep, "very_hard_cov/very_hard_seqs_full_coverages.rds"))
+
+
+methods <- c("cfda", "windows", "om-trate (hard)", "om-slog (hard)", "lcs (hard)", "om-trate (soft)",  "om-slog (soft)", "lcs (soft)")
+
+mean_methods <- function(cov_data) {
+
+    avg_cov_df <- data.frame(methods)
+
+    for (method in names(cov_data)) {
+
+        avg_cov_df[method] <- rowMeans(cov_data[[method]])
+    }
+
+    return(avg_cov_df)
+}
+
+
+hard_coverages <- mean_methods(hard_covs) |> pivot_longer(-methods, names_to="Type", values_to="Coverage")
+very_hard_coverages <- mean_methods(very_hard_covs)|> pivot_longer(-methods, names_to="Type", values_to="Coverage")
+med_coverages <- mean_methods(med_covs)|> pivot_longer(-methods, names_to="Type", values_to="Coverage")
+dar_med_coverages <- mean_methods(dar_med_covs)|> pivot_longer(-methods, names_to="Type", values_to="Coverage")
+easy_coverages <- mean_methods(easy_covs)|> pivot_longer(-methods, names_to="Type", values_to="Coverage")
+
+
+ggplot(data = hard_coverages, aes(x=methods, y=Coverage, color=Type, group=Type)) + geom_point() + geom_line() + labs(title="Hard Simulations")
+ggplot(data = very_hard_coverages, aes(x=methods, y=Coverage, color=Type, group=Type)) + geom_point() + geom_line() + labs(title="Very Hard Simulations")
+ggplot(data = med_coverages, aes(x=methods, y=Coverage, color=Type, group=Type)) + geom_point() + geom_line() + labs(title="Medium Simulations")
+ggplot(data = dar_med_coverages, aes(x=methods, y=Coverage, color=Type, group=Type)) + geom_point() + geom_line() + labs(title="Medium (DAR) Simulations")
+ggplot(data = easy_coverages, aes(x=methods, y=Coverage, color=Type, group=Type)) + geom_point() + geom_line() + labs(title="Easy Simulations")
+
+# now interval widths 
+
+
+hard_mpiw <- readRDS(paste0(filep, "hard_cov/hard_seqs_full_mpiws.rds"))
+med_mpiw <- readRDS(paste0(filep, "med_cov/med_seqs_full_mpiws.rds"))
+dar_med_mpiw <- readRDS(paste0(filep, "dar_med_cov/dar_med_seqs_full_mpiws.rds"))
+easy_mpiw <- readRDS(paste0(filep, "easy_cov/easy_seqs_full_mpiws.rds"))
+very_hard_mpiw <- readRDS(paste0(filep, "very_hard_cov/very_hard_seqs_full_mpiws.rds"))
+
+
+
+hard_mpiw_av <- mean_methods(hard_mpiw) |> pivot_longer(-methods, names_to="Type", values_to="mpiw")
+very_hard_mpiw_av <- mean_methods(very_hard_mpiw)|> pivot_longer(-methods, names_to="Type", values_to="mpiw")
+med_mpiw_avs <- mean_methods(med_mpiw)|> pivot_longer(-methods, names_to="Type", values_to="mpiw")
+dar_med_mpiw_av <- mean_methods(dar_med_mpiw)|> pivot_longer(-methods, names_to="Type", values_to="mpiw")
+easy_mpiw_av <- mean_methods(easy_mpiw)|> pivot_longer(-methods, names_to="Type", values_to="mpiw")
+
+
+ggplot(data = hard_mpiw_av, aes(x=methods, y=mpiw, color=Type, group=Type)) + geom_point() + geom_line() + labs(title="Hard Simulations")
+ggplot(data = very_hard_mpiw_av, aes(x=methods, y=mpiw, color=Type, group=Type)) + geom_point() + geom_line() + labs(title="Very Hard Simulations")
+ggplot(data = med_mpiw_avs, aes(x=methods, y=mpiw, color=Type, group=Type)) + geom_point() + geom_line() + labs(title="Medium Simulations")
+ggplot(data = dar_med_mpiw_av, aes(x=methods, y=mpiw, color=Type, group=Type)) + geom_point() + geom_line() + labs(title="Medium (DAR) Simulations")
+ggplot(data = easy_mpiw_av, aes(x=methods, y=mpiw, color=Type, group=Type)) + geom_point() + geom_line() + labs(title="Easy Simulations")
+
+
+```
+
+
+
+
+```{r}
+# Create the directory if it doesn't exist
+plot_dir <- "sim_coverage_plots"
+if (!dir.exists(plot_dir)) {
+  dir.create(plot_dir)
+}
+
+# Helper function to plot and save automatically
+save_sim_plot <- function(data, title, filename) {
+  p <- ggplot(data = data, aes(x=methods, y=!!sym(names(data)[3]), color=Type, group=Type)) + 
+    geom_point() + 
+    geom_line() + 
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) + # Better readability for method names
+    labs(title=title)
+  
+  # Print to console/notebook
+  print(p)
+  
+  # Save to folder
+  ggsave(filename = file.path(plot_dir, filename), plot = p, width = 8, height = 6)
+}
+
+# --- Coverage Plots ---
+
+save_sim_plot(hard_coverages, "Hard Simulations Coverage", "coverage_hard.png")
+save_sim_plot(very_hard_coverages, "Very Hard Simulations Coverage", "coverage_very_hard.png")
+save_sim_plot(med_coverages, "Medium Simulations Coverage", "coverage_medium.png")
+save_sim_plot(dar_med_coverages, "Medium (DAR) Simulations Coverage", "coverage_dar_medium.png")
+save_sim_plot(easy_coverages, "Easy Simulations Coverage", "coverage_easy.png")
+
+# --- Interval Width (MPIW) Plots ---
+
+save_sim_plot(hard_mpiw_av, "Hard Simulations MPIW", "mpiw_hard.png")
+save_sim_plot(very_hard_mpiw_av, "Very Hard Simulations MPIW", "mpiw_very_hard.png")
+save_sim_plot(med_mpiw_avs, "Medium Simulations MPIW", "mpiw_medium.png")
+save_sim_plot(dar_med_mpiw_av, "Medium (DAR) Simulations MPIW", "mpiw_dar_medium.png")
+save_sim_plot(easy_mpiw_av, "Easy Simulations MPIW", "mpiw_easy.png")
+```
