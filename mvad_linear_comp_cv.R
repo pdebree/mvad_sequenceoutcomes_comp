@@ -44,12 +44,14 @@ cv_comp$cov <- replicate(nCVs, comp, simplify = FALSE)
 cv_comp$mpiw <- replicate(nCVs, comp, simplify = FALSE)
 
 
+
+
 task_vec <- data.frame(cv_index = 1:nCVs)
 
 
 results <- foreach(m = 1:nrow(task_vec), .packages = c("tidyverse", "cluster", "TraMineR", "cfda", "TraMineRextras")) %dopar% {
 
-  cv_index <- task_vec$set_idx[m]
+  cv_index <- task_vec$cv_index[m]
   
   ### Data Preparation 
   # Data load in and labeling 
@@ -391,9 +393,9 @@ results <- foreach(m = 1:nrow(task_vec), .packages = c("tidyverse", "cluster", "
 
 for(result in results) {
   n <- result$cv_index 
-  cv_comp$mse[n] <- result$mse.comp
-  cv_comp$cov[n] <- result$cov.comp
-  cv_comp$mpiw[n] <- result$mpiw.comp
+  cv_comp$mse[[n]] <- result$mse.comp
+  cv_comp$cov[[n]] <- result$cov.comp
+  cv_comp$mpiw[[n]] <- result$mpiw.comp
 }
 
 
@@ -402,3 +404,5 @@ saveRDS(cv_comp, file="CV_LinearComp.rds")
   
 # Stop the cluster
 stopCluster(cl)
+
+

@@ -292,7 +292,7 @@ hard_cluster <- function(clusterward, nClusts, covars, y, train_idx, test_idx, d
 
 
 
-hard_cluster_onehot <- function(clusterward, nClusts, covars, yr, train_idx, test_idx, dist_matrix) {
+hard_cluster_onehot <- function(clusterward, nClusts, covars, y, train_idx, test_idx, dist_matrix) {
   
   all_clusters <- paste0("cluster_", 2:nClusts)
 
@@ -475,6 +475,34 @@ safe_which_min <- function(x) {
 }
 
 
+calc_pred_stats <- function(train_data, test_data) {
+
+    # looking at mean and var 
+    fit.lin <- lm(y~., data=train_data) 
+
+    train_labs <- train_data |> mutate(preds = predict(fit.lin))
+    test_labs <- test_data |> mutate(preds = predict(fit.lin, newdata=hard_cluster_data$test_data))
+
+  
+    train_sum <- train_labs |> group_by(cluster) |> summarize(mean_preds = mean(preds), var_preds = sd(preds)^2, mean_y = mean(y), var_y = sd(y)^2)
+    test_sum <- test_labs |> group_by(cluster) |> summarize(mean_preds = mean(preds), var_preds = sd(preds)^2, mean_y = mean(y), var_y = sd(y)^2)
+
+    return(list(train_sum = train_sum, test_sum = test_sum ))
+}
 
 
+
+soft_silhouette <- function(distances, probabilities) {
+
+  # some sort of metric where you find the distance between all points and then mulitply by probability
+  # of beign in the cluster as well as probability of not being in the same cluster. (but these are
+  # codefined, so compare)
+
+  # you have a point, you have a probability, you have distances to other points and you have their 
+  # probabilities
+  # could you do something lik: (but you would have to invert it because really we want similarity not dissimli)
+  # p_ain*dis_ab*p_bin (probability both are in)
+
+
+}
 
