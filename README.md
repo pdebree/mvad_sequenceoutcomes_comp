@@ -20,3 +20,8 @@ Files:
 Directories:
 - plots - Directory containing plots created for analysis
 - hpc_jobs_code - sbatch scripts for HPC runs 
+- cv_outputs - contains files for cross validation of linear/non-linear competition outputs
+- sims_outputs/conv_sims - contains files for sim study outputs
+
+
+
