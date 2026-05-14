@@ -32,8 +32,8 @@ source("seqout_utils.R")
 nMethods <- 8
 nComps <- 6
 nSoft <- 4
-nSets <- 1
-fuzz_soft <- 1.25
+nSets <- 150
+fuzz_soft <- 1.5
 
 folds <- 10
 cv_idx <- rep(1:folds,each=floor(900/folds))

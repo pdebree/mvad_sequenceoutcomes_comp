@@ -36,7 +36,7 @@ fuzz_soft <- 1.5
 nSoftClusts <- 13 
 nCovars <- 11 
 
-nCVs <- 2
+nCVs <- 20
 
 comp <- list()
 comp$om_trate_hard <- array(NA,c(folds,nClusts, nCovars + nClusts - 2))
