@@ -3,6 +3,7 @@
 
 library(tidyverse)
 library(TraMineR)
+library(TraMineRextras)
 library(cluster)
 library(cfda)
 library(foreach)
@@ -10,12 +11,12 @@ library(doParallel)
 
 source("seqout_utils.R")
 
-# Detect cores allocated by Slurm
-n_cores <- as.integer(Sys.getenv("SLURM_CPUS_PER_TASK"))
-# Register the cluster
-cl <- makeCluster(n_cores)
-clusterSetRNGStream(cl, iseed = 123) # for reproducability
-registerDoParallel(cl)
+# # Detect cores allocated by Slurm
+# n_cores <- as.integer(Sys.getenv("SLURM_CPUS_PER_TASK"))
+# # Register the cluster
+# cl <- makeCluster(n_cores)
+# clusterSetRNGStream(cl, iseed = 123) # for reproducability
+# registerDoParallel(cl)
 
 
 folds <- 5
@@ -37,13 +38,12 @@ comp$lcs_hard <- array(NA,c(folds,nClusts))
 comp$lcs_soft <- array(NA,c(folds,nClusts))
 comp$windows <- array(NA,c(folds,nWindows))
 comp$harm <- array(NA,c(folds,nHarms))
+comp$demos <- array(NA, c(folds))
 
 cv_comp <- list()
 cv_comp$mse <- replicate(nCVs, comp, simplify = FALSE)
 cv_comp$cov <- replicate(nCVs, comp, simplify = FALSE)
 cv_comp$mpiw <- replicate(nCVs, comp, simplify = FALSE)
-
-
 
 
 task_vec <- data.frame(cv_index = 1:nCVs)
@@ -104,6 +104,28 @@ results <- foreach(m = 1:nrow(task_vec), .packages = c("tidyverse", "cluster", "
   mse.cv.windows <- cov.cv.windows <- mpiw.cv.windows <- array(NA,c(folds,nWindows))
   mse.cv.harm <- cov.cv.harm  <- mpiw.cv.harm <- array(NA,c(folds,nHarms))
   mse.cv.mets <- cov.cv.mets <- mpiw.cv.mets  <- array(NA,c(folds,nSeqPcs))
+  mse.cv.demos <- cov.cv.demos <- mpiw.cv.demos  <- array(NA,c(folds))
+
+
+  ### Cross Validation for Clustering Methods with OM-Transition Rate 
+  for (i in 1:folds) {
+    cat("Fold Number ",i,"\n")
+    test_idx <- idx == i
+    train_idx <- !test_idx
+    
+    # data frame of mvad demos split into training and testing 
+    demos_data <- mvad_covars |> mutate(y = num_month_em_last_year)
+
+    demos_output <- fit_linear(demos_data[train_idx,], demos_data[test_idx,])
+
+    # hard clustering
+    mse.cv.demos[i] <- demos_output$mse
+    cov.cv.demos[i] <- demos_output$coverage
+    mpiw.cv.demos[i] <- demos_output$mpiw
+    
+  }
+
+
 
   ### Cross Validation for Clustering Methods with OM-Transition Rate 
   for (i in 1:folds) {
@@ -360,6 +382,7 @@ results <- foreach(m = 1:nrow(task_vec), .packages = c("tidyverse", "cluster", "
   mse.comp$windows <- mse.cv.windows
   mse.comp$harm <- mse.cv.harm
   mse.comp$mets <- mse.cv.mets 
+  mse.comp$demos <- mse.cv.demos
 
   cov.comp <- list()
   cov.comp$om_trate_hard <- cov.cv.om_trate_hard 
@@ -371,6 +394,7 @@ results <- foreach(m = 1:nrow(task_vec), .packages = c("tidyverse", "cluster", "
   cov.comp$windows <- cov.cv.windows
   cov.comp$harm <- cov.cv.harm
   cov.comp$mets <- cov.cv.mets 
+  cov.comp$demos <- cov.cv.demos
 
 
   mpiw.comp <- list()
@@ -383,6 +407,7 @@ results <- foreach(m = 1:nrow(task_vec), .packages = c("tidyverse", "cluster", "
   mpiw.comp$windows <- mpiw.cv.windows
   mpiw.comp$harm <- mpiw.cv.harm
   mpiw.comp$mets <- mpiw.cv.mets 
+  mpiw.comp$demos <- mpiw.cv.demos
 
   list(mpiw.comp=mpiw.comp, cov.comp=cov.comp, mse.comp=mse.comp, cv_index=cv_index)
 }
