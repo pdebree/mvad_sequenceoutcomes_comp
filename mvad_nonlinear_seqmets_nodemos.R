@@ -50,7 +50,7 @@ dists <- create_dists(data.seq=mvad.seq)
 
 task_vec <- data.frame(cv_index = 1:nCVs)
 
-mse.cv.rmets_rf <- array(NA,c(folds, nSeqPcs, nCovars + nSeqPcs - 1))
+mse.cv.rmets_rf <- array(NA,c(folds, nSeqPcs, nSeqPcs - 1))
 
 cv_seqs <- replicate(nCVs, mse.cv.rmets_rf , simplify = FALSE)
 
@@ -71,7 +71,7 @@ seq_results <- foreach(m = 1:nrow(task_vec), .packages = c("tidyverse", "cluster
   shuffle_index <- sample(1:nrecs, nrecs)
   ids <- sort(unique(mvad$id))
 
-  mse.cv.rmets_rf <- array(NA,c(folds, nSeqPcs, nCovars + nSeqPcs - 1))
+  mse.cv.rmets_rf <- array(NA,c(folds, nSeqPcs, nSeqPcs - 1))
 
   ## Clustering + Sequence Metrics 
 
@@ -121,22 +121,21 @@ seq_results <- foreach(m = 1:nrow(task_vec), .packages = c("tidyverse", "cluster
     train_scores <- pca_comps_train$x
     test_scores <- predict(pca_comps_train, newdata = test_seqmets) 
     
-    for (j in 0:nSeqPcs) {
-
-      if (j == 0) {
-        train_rmets <- cbind(num_month_em_last_year[train_idx], mvad_covars[train_idx,], train_scores[,1:j,drop = FALSE])
-        test_rmets <- cbind(num_month_em_last_year[test_idx], mvad_covars[test_idx,], test_scores[,1:j,drop = FALSE])
-      } else {
-        train_rmets <- cbind(num_month_em_last_year[train_idx], mvad_covars[train_idx,], train_scores[,1:j,drop = FALSE])
-        test_rmets <- cbind(num_month_em_last_year[test_idx], mvad_covars[test_idx,], test_scores[,1:j,drop = FALSE])
-      }
-
+    for (j in 1:nSeqPcs) {
+      train_rmets <- cbind(as.data.frame(num_month_em_last_year[train_idx]), train_scores[,1:j,drop = FALSE])
+      test_rmets <- cbind(as.data.frame(num_month_em_last_year[test_idx]), test_scores[,1:j,drop = FALSE])
+    
       colnames(train_rmets)[1] <- "y"
       colnames(test_rmets)[1] <- "y"
-      
-      for (k in 1:(nCovars + j - 1)) {
-        mets_fit <- fit_rf(train_data=train_rmets, test_data=test_rmets, mtry=k)
-        mse.cv.rmets_rf[i,j,k] <- mets_fit$mse
+
+      if (j == 1) {
+        mets_fit <- fit_rf(train_data=train_rmets, test_data=test_rmets, mtry=1)
+        mse.cv.rmets_rf[i,j,1] <- mets_fit$mse
+      } else {
+        for (k in 1:(j - 1)) {
+          mets_fit <- fit_rf(train_data=train_rmets, test_data=test_rmets, mtry=k)
+          mse.cv.rmets_rf[i,j,k] <- mets_fit$mse
+        }
       }
     }
   }
@@ -147,6 +146,10 @@ for(seq_result in seq_results) {
   n <- seq_result$cv_index
   cv_seqs[[n]] <- seq_result$mses
 }
+
+
+
+
 
 
 seqs_list <- simplify2array(cv_seqs)
@@ -178,12 +181,12 @@ best_n_seq_mets_pc <- which.min(avg_rmse_comps)
 
 
 comp <- list()
-comp$om_trate_hard <- array(NA,c(folds,nClusts, nCovars + best_n_seq_mets_pc + nClusts - 2))
-comp$om_trate_soft <- array(NA,c(folds,nSoftClusts,nCovars + best_n_seq_mets_pc + nSoftClusts - 2))
-comp$om_slog_hard <- array(NA,c(folds,nClusts, nCovars + best_n_seq_mets_pc + nClusts - 2))
-comp$om_slog_soft <- array(NA,c(folds,nSoftClusts, nCovars + best_n_seq_mets_pc + nSoftClusts - 2))
-comp$lcs_hard <- array(NA,c(folds,nClusts, nCovars + best_n_seq_mets_pc + nClusts - 2))
-comp$lcs_soft <- array(NA,c(folds,nSoftClusts, nCovars + best_n_seq_mets_pc + nSoftClusts - 2))
+comp$om_trate_hard <- array(NA,c(folds,nClusts,best_n_seq_mets_pc +  nCovars + nClusts - 2))
+comp$om_trate_soft <- array(NA,c(folds,nSoftClusts,best_n_seq_mets_pc + nCovars + nSoftClusts - 2))
+comp$om_slog_hard <- array(NA,c(folds,nClusts, best_n_seq_mets_pc + nCovars + nClusts - 2))
+comp$om_slog_soft <- array(NA,c(folds,nSoftClusts, best_n_seq_mets_pc + nCovars + nSoftClusts - 2))
+comp$lcs_hard <- array(NA,c(folds,nClusts,best_n_seq_mets_pc +  nCovars + nClusts - 2))
+comp$lcs_soft <- array(NA,c(folds,nSoftClusts,best_n_seq_mets_pc +  nCovars + nSoftClusts - 2))
 
 cv_comp <- list()
 cv_comp$mse <- replicate(nCVs, comp, simplify = FALSE)
@@ -207,8 +210,8 @@ clust_results <- foreach(m = 1:nrow(task_vec), .packages = c("tidyverse", "clust
 
   mpiw.cv.om_trate_hard_rf <- cov.cv.om_trate_hard_rf <- mse.cv.om_trate_hard_rf <- array(NA,c(folds,nClusts, best_n_seq_mets_pc + nCovars + nClusts - 2))
   mpiw.cv.om_trate_soft_rf <- cov.cv.om_trate_soft_rf <- mse.cv.om_trate_soft_rf <- array(NA,c(folds,nSoftClusts, best_n_seq_mets_pc + nCovars + nSoftClusts - 2))
-  mpiw.cv.om_slog_hard_rf <- cov.cv.om_slog_hard_rf <- mse.cv.om_slog_hard_rf <- array(NA,c(folds,nClusts,best_n_seq_mets_pc +  nCovars + nClusts - 2))
-  mpiw.cv.om_slog_soft_rf <- cov.cv.om_slog_soft_rf <- mse.cv.om_slog_soft_rf <- array(NA,c(folds,nSoftClusts, best_n_seq_mets_pc +  nCovars + nSoftClusts - 2))
+  mpiw.cv.om_slog_hard_rf <- cov.cv.om_slog_hard_rf <- mse.cv.om_slog_hard_rf <- array(NA,c(folds,nClusts, best_n_seq_mets_pc + nCovars + nClusts - 2))
+  mpiw.cv.om_slog_soft_rf <- cov.cv.om_slog_soft_rf <- mse.cv.om_slog_soft_rf <- array(NA,c(folds,nSoftClusts, best_n_seq_mets_pc + nCovars + nSoftClusts - 2))
   mpiw.cv.lcs_hard_rf <- cov.cv.lcs_hard_rf <- mse.cv.lcs_hard_rf <- array(NA,c(folds,nClusts, best_n_seq_mets_pc + nCovars + nClusts - 2))
   mpiw.cv.lcs_soft_rf <- cov.cv.lcs_soft_rf <- mse.cv.lcs_soft_rf <- array(NA,c(folds,nSoftClusts, best_n_seq_mets_pc + nCovars + nSoftClusts - 2))
 
@@ -426,7 +429,10 @@ for(clust_result in clust_results) {
 
 
 
-saveRDS(cv_comp, file="CV_SeqMetsNonLinear.rds")
+saveRDS(cv_comp, file="CV_SeqMetsNonLinear_NoDemos.rds")
  
 # Stop the cluster
 stopCluster(cl)
+
+
+

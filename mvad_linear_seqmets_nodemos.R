@@ -65,6 +65,7 @@ seq_results <- foreach(m = 1:nrow(task_vec), .packages = c("tidyverse", "cluster
   if (nrecs %% folds != 0) idx.orig <- c(idx.orig,1:(nrecs %% folds))
   idx <- sample(idx.orig) #shuffle
 
+
   mse.cv.mets  <- array(NA,c(folds,nSeqPcs))
   ### Sequence PCs + Clustering Methods 
   # need to find the best performance with just the sequence PCs then add in the 
@@ -111,14 +112,15 @@ seq_results <- foreach(m = 1:nrow(task_vec), .packages = c("tidyverse", "cluster
     train_scores <- pca_comps_train$x
     test_scores <- predict(pca_comps_train, newdata =rmetrics[test_idx, ]) 
     
-    train_mvad_rmets <- cbind(mvad_covars[train_idx,], as.data.frame(train_scores))
-    test_mvad_rmets <- cbind(mvad_covars[test_idx,], as.data.frame(test_scores))
+    train_mvad_rmets <- as.data.frame(train_scores)
+    test_mvad_rmets <- as.data.frame(test_scores)
     
     # find best performance in fold 
     for (j in 1:nSeqPcs) {
 
-      train_seq <- train_mvad_rmets[,1:(11+j)] %>% mutate(y=num_month_em_last_year[train_idx])
-      test_seq <- test_mvad_rmets[,1:(11+j)] %>% mutate(y=num_month_em_last_year[test_idx])
+        # This is fairly hard coded to the form of mvad_covars0. 
+      train_seq <- train_mvad_rmets[,1:j, drop = FALSE] %>% mutate(y=num_month_em_last_year[train_idx])
+      test_seq <- test_mvad_rmets[,1:j, drop = FALSE] %>% mutate(y=num_month_em_last_year[test_idx])
 
       seqs_fit <- fit_linear(train_seq, test_seq)
 
@@ -129,22 +131,17 @@ seq_results <- foreach(m = 1:nrow(task_vec), .packages = c("tidyverse", "cluster
   list(cv_index=cv_index, mse = mse.cv.mets)
 }
 
-
 for(seq_result in seq_results) {
   n <- seq_result$cv_index
   cv_seqs[[n]] <- seq_result$mse
-
 }
-
 
 seq_3d <- simplify2array(cv_seqs)
 avg_fold_mses <- apply(seq_3d, c(2,3), mean)
 best_nseq_by_fold <- apply(avg_fold_mses, 2, safe_which_min)
 best_n_seq_mets_pc <- safe_mode(best_nseq_by_fold)
-avg_cv_mses <- apply(seq_3d, 2, mean)
 
-
-comp <- list() 
+comp <- list()
 comp$om_trate_hard <- array(NA,c(folds,nClusts))
 comp$om_trate_soft <- array(NA,c(folds,nClusts))
 comp$om_slog_hard <- array(NA,c(folds,nClusts))
@@ -173,7 +170,6 @@ clust_results <- foreach(m = 1:nrow(task_vec), .packages = c("tidyverse", "clust
   mse.cv.lcs_hard <- cov.cv.lcs_hard <- mpiw.cv.lcs_hard <- array(NA,c(folds,nClusts))
   mse.cv.lcs_soft <- cov.cv.lcs_soft <- mpiw.cv.lcs_soft <- array(NA,c(folds,nClusts))
 
-
     # Number of each method to check
   nClusts <- 25 
   nSoftClusts <- 13 
@@ -189,6 +185,9 @@ clust_results <- foreach(m = 1:nrow(task_vec), .packages = c("tidyverse", "clust
   if (nrecs %% folds != 0) idx.orig <- c(idx.orig,1:(nrecs %% folds))
   idx <- sample(idx.orig) #shuffle
 
+  # Creates a random shuffle of the indices to be used in the the train-test split and folds. 
+  shuffle_index <- sample(1:nrecs, nrecs)
+  ids <- sort(unique(mvad$id))
 
   ### Sequence PCs + Clustering Methods 
   # need to find the best performance with just the sequence PCs then add in the 
@@ -387,9 +386,9 @@ for(clust_result in clust_results) {
 
 }
 
-saveRDS(cv_comp, file="CV_SeqMetsLinear.rds")
+saveRDS(cv_comp, file="CV_SeqMetsLinear_NoDemos.rds")
  
 # Stop the cluster
-stopCluster(cl)
+#stopCluster(cl)
 
 

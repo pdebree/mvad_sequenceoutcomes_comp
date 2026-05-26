@@ -14,6 +14,7 @@ library(ranger)
 library(tuneRanger)
 library(gt)
 library(dplyr)
+library(factoextra)
 source("seqout_utils.R")
 
 
@@ -37,10 +38,17 @@ get_method_metrics <- function(data_list, method_name, method_labs) {
   method_mpiw <- lapply(data_list$mpiw, function(x) x[[method_name]])
   combined_mpiw <- simplify2array(method_mpiw)
 
-  # find means across the folds (of all cross )
-  mean_mse <- apply(combined_mse, 2, mean, na.rm = TRUE)
-  mean_cov <- apply(combined_cov, 2, mean, na.rm = TRUE)
-  mean_mpiw <- apply(combined_mpiw, 2, mean, na.rm = TRUE)
+  if (method_name == "demos") {
+    mean_mse <- mean(combined_mse)
+    mean_cov <- mean(combined_cov)
+    mean_mpiw <- mean(combined_mpiw)
+
+  } else {
+    # find means across the folds (of all cross )
+    mean_mse <- apply(combined_mse, 2, mean, na.rm = TRUE)
+    mean_cov <- apply(combined_cov, 2, mean, na.rm = TRUE)
+    mean_mpiw <- apply(combined_mpiw, 2, mean, na.rm = TRUE)
+  }
 
   df <- data.frame(
       Method = method_name, 
@@ -58,7 +66,7 @@ get_method_metrics <- function(data_list, method_name, method_labs) {
 
 
 methods <- c("om_trate_hard", "om_trate_soft", "om_slog_hard", 
-             "om_slog_soft", "lcs_hard", "lcs_soft", "windows", "harm")
+             "om_slog_soft", "lcs_hard", "lcs_soft", "windows", "harm", "demos")
 
 method_labels <- c(
   "om_trate_hard" = "OM T-Rate (Hard)", 
@@ -68,18 +76,21 @@ method_labels <- c(
   "lcs_hard"      = "LCS (Hard)", 
   "lcs_soft"      = "LCS (Soft)", 
   "windows"       = "Counts", 
-  "harm"          = "CFDA"
+  "harm"          = "CFDA", 
+  "demos" = "Demographics"
 )
 
 lin_metrics <- do.call(rbind, lapply(methods, function(m) get_method_metrics(linear_comp, m, method_labels)))
 
+best_lin <- as.data.frame(lin_metrics |> group_by(Method) |> filter(RMSE == safe_min(RMSE)) |> arrange(RMSE))
 
-lin_rmse_long <- lin_metrics |> dplyr::select(Method, Index, RMSE) |> filter(Index < 16)
+lin_rmse_long <- lin_metrics |> dplyr::select(Method, Index, RMSE)  |> filter(Index < 20)
 
 # Check for best performance by method 
 as.data.frame(lin_rmse_long  |> group_by(Method) |> filter(RMSE == safe_min(RMSE)) |> arrange(RMSE))
 
-lin_rmse_long <- lin_rmse_long |> filter(Method %in% c("Windows", "CFDA", "LCS (Soft)", "OM INDELSLOG (Hard)"))
+
+lin_rmse_long <- lin_rmse_long |> filter(Method %in% c("Counts", "CFDA", "LCS (Soft)", "OM INDELSLOG (Hard)"))
 
 pdf("plots/LinearCompPlot.pdf",width=8,height=6)
 ggplot(data = lin_rmse_long, 
@@ -104,22 +115,48 @@ dev.off()
 
 
 # function to get best mse (considering mtry) for every method/component combination
-get_nonlinear_rmse <- function(data_list, method_name) {
+get_nonlinear_metrics <- function(data_list, method_name) {
   
   # Extract the list of 20 CV 3d arrays (fold, comps, mtry)
-  method_list <- lapply(data_list$mse, function(x) x[[method_name]])
-
-  # make into 4d array 
-  combined_4d <- simplify2array(method_list)
-
-  # make matrix of means (i.e. number of components and mtry - means across folds*cvs)
-  mean_mse_matrix <- apply(combined_4d, c(2, 3), mean, na.rm = TRUE)
-
-  # make vector of best performance and vector of best associated mtry values
-  avg_rmse_by_mtry <- sqrt(apply(mean_mse_matrix, 1, safe_min))
-  best_mtry <- apply(mean_mse_matrix, 1, safe_which_min)
+  method_mse <- lapply(data_list$mse, function(x) x[[method_name]])
+  combined_mse <- simplify2array(method_mse)
+  method_cov <- lapply(data_list$cov, function(x) x[[method_name]])
+  combined_cov <- simplify2array(method_cov)
+  method_mpiw <- lapply(data_list$mpiw, function(x) x[[method_name]])
+  combined_mpiw <- simplify2array(method_mpiw)
   
-  return(list(rmses = avg_rmse_by_mtry, mtrys = best_mtry))
+  # within every cross validation - find mse average by mtry 
+  avg_cv_mse <- apply(combined_mse, c(2, 3, 4), mean, na.rm = TRUE)
+  avg_cv_cov <- apply(combined_cov, c(2, 3, 4), mean, na.rm = TRUE)
+  avg_cv_mpiw <- apply(combined_mpiw, c(2, 3, 4), mean, na.rm = TRUE)
+
+  # essentially the location maps to the mtry values
+  best_mtry_cv <- apply(avg_cv_mse, c(1, 3), safe_which_min)
+  modal_mtrys <- apply(best_mtry_cv, 1, safe_mode)
+
+  # the actual min corresponds to this so we will get mses that correspond to the best
+  best_avg_mse_comps_cv <- apply(avg_cv_mse, c(1, 3), safe_min)
+  # now we can average these mses (picked by mtry) to find mse by comp
+  rmse_comps <- sqrt(apply(best_avg_mse_comps_cv, 1, mean, rm.na=TRUE))
+
+  # data frame that has the indexes needed to get the mtrys for each components/cv combination
+  best_mtry_indices <- cbind(
+    as.vector(row(best_mtry_cv)), 
+    as.vector(best_mtry_cv), 
+    as.vector(col(best_mtry_cv))
+  )
+
+  # copy dimensions of avg_cv_cov 
+  dims <- dim(avg_cv_cov)
+
+  best_avg_cov_comps_cv <- matrix(avg_cv_cov[best_mtry_indices], nrow = dims[1], ncol = dims[3])
+  best_avg_mpiw_comps_cv <- matrix(avg_cv_mpiw[best_mtry_indices], nrow = dims[1], ncol = dims[3])
+
+  cov_comps <- apply(best_avg_cov_comps_cv, 1, mean)
+  mpiw_comps <- apply(best_avg_mpiw_comps_cv, 1, mean)
+
+  return(list(rmses = rmse_comps, cov = cov_comps, mpiw =  mpiw_comps, modal_mtry = modal_mtrys, mtry_dis = best_mtry_cv, method_name = method_name))
+
 }
 
 method_labels <- c(
@@ -134,61 +171,30 @@ method_labels <- c(
 )
 
 nonlin_metric_data <- map_dfr(names(method_labels), function(m) {
-  res <- get_nonlinear_rmse(nonlinear_comp, m)  
+  res <- get_nonlinear_metrics(nonlinear_comp, m)  
   data.frame(
     comps = seq_along(res$rmses),
     rmse = res$rmse,
+    cov = res$cov, 
+    mpiw = res$mpiw,
     method = method_labels[[m]], 
-    mtry = res$mtrys
+    modal_mtry = res$modal_mtry,
+    mtry_dist = I(split(res$mtry_dis, row(res$mtry_dis)))
   )
 })
 
 
-get_cov_comp_mtry <- function(data_list, method, mtry, comps) {
-
-  method_list <- lapply(data_list$cov, function(x) x[[method_name]])
-  
-  if (is.na(mtry)) {
-    folds_covs <- NA
-  } else {
-    folds_covs <- mean(simplify2array(method_list)[, comps, mtry, ])
-  }
-  
-  return(folds_covs)
-
-}
-
-
-get_mpiw_comp_mtry <- function(data_list, method, mtry, comps) {
-  # gets the average cov for a number of components, with a given mtry, for a specific method 
-
-  method_list <- lapply(data_list$mpiw, function(x) x[[method_name]])
-  
-  if (is.na(mtry)) {
-    folds_mpiw <- NA
-  } else {
-    folds_mpiw <- mean(simplify2array(method_list)[, comps, mtry, ])
-  }
-
-  return(folds_mpiw)
-}
-
-nonlin_metric_data <- nonlin_metric_data |> rowwise() |> mutate(
-  cov = get_cov_comp_mtry(data_list, method, mtry, comps),
-  mpiw = get_mpiw_comp_mtry(data_list, method, mtry, comps)
-)
-
-
+rownames(nonlin_metric_data) <- 1:nrow(nonlin_metric_data)
 
 # Look at best performances 
-nonlin_metric_data |> group_by(method) |> filter(rmse == safe_min(rmse)) |> arrange(rmse)
+best_nonlin <- as.data.frame(nonlin_metric_data |> group_by(method) |> filter(rmse == safe_min(rmse)) |> arrange(rmse) |> mutate(sd_mtry = sd(unlist(mtry_dist))))
 
 # filter to the CFDA, Windows and the Best Performing hard and Soft Clustering 
-nonlin_metric_data <- nonlin_metric_data  |> filter(method %in% c("Counts", "CFDA", ))
+nonlin_metric_data_best <- nonlin_metric_data  |> filter(method %in% c("Counts", "CFDA", "OM INDELSLOG (Hard)", "LCS (Soft)"), comps < 20)
 
 
 pdf("plots/NonLinearCompPlot.pdf", width = 8, height = 6)
-ggplot(nonlin_rmse_plot_data, aes(x = comps, y = rmse, color = method)) +
+ggplot(nonlin_metric_data_best, aes(x = comps, y = rmse, color = method)) +
   geom_line(linewidth = 1) +
   geom_point(size = 2) + 
   scale_x_continuous(breaks = 2:25) +
@@ -205,11 +211,29 @@ dev.off()
 
 
 
-# Make Tables of Convergences 
 
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Make Tables of Convergences
 
 # Make Convergence Plots 
 cov_list <- readRDS("linear_output/linear_job_coverage/LinearFullCoverages.rds")
@@ -322,13 +346,11 @@ cv_lin <- readRDS("cv_outputs/CV_LinearComp.rds")
 
 
 
-
-
 # Variable Importance Plots 
 # Using the mtry associated with best performance
 
 
-best_mtry <- nonlin_rmse_plot_data |> group_by(method) |> filter(rmse == safe_min(rmse)) 
+best_mtry <- nonlin_metric_data |> group_by(method) |> filter(rmse == safe_min(rmse), method %in% c("Counts", "CFDA", "OM INDELSLOG (Hard)", "LCS (Soft)")) 
 
 ### Data Preparation 
 # Data load in and labeling 
@@ -353,10 +375,10 @@ dists <- create_dists(data.seq=mvad.seq)
 # Do LCS Soft and OM-Trate Hard 
 
 
-best_no_hard_cl <- best_mtry |> filter(method == "") |> pull(comps)
+best_no_hard_cl <- best_mtry |> filter(method == "OM INDELSLOG (Hard)") |> pull(comps)
 
-# LCS (Hard) - dists[[2]] is hard coded as LCS
-clusterward_hard <- agnes(dists[[]], diss=TRUE, method="ward")
+# OM SLOG (Hard) - dists[[3]] is hard coded as OM SLOG 
+clusterward_hard <- agnes(dists[[3]], diss=TRUE, method="ward")
 
 mvad_hard_cl <- mvad_covars %>% 
   mutate(cluster=factor(cutree(clusterward_hard,k=best_no_hard_cl)), y=num_month_em_last_year) 
@@ -371,10 +393,10 @@ mvad_hard_cl <- mvad_hard_cl %>% dplyr::select(-cluster)
 
 
 # Soft Clustering - OM T-Rate Soft is the best
-best_no_soft_cl <- best_mtry |> filter(method == "")  |> pull(comps)
+best_no_soft_cl <- best_mtry |> filter(method == "LCS (Soft)")  |> pull(comps)
 
 # OM T-Rate (Soft) - Hard Coded in dists[[1]]
-clustering_soft <- fanny(dists[[]], k=best_no_soft_cl, memb.exp=1.5, diss=TRUE, maxit = 1000)$membership
+clustering_soft <- fanny(dists[[2]], k=best_no_soft_cl, memb.exp=1.5, diss=TRUE, maxit = 1000)$membership
 colnames(clustering_soft) <- paste0("Cluster_",1:best_no_soft_cl)
 
 # remove first group so not linearly dependent. 
@@ -399,12 +421,15 @@ mvad_states_wide <- id_year %>%
   pivot_wider(id_cols=c(id), 
               names_from=c(value,year), values_from=n, values_fill = 0) %>% dplyr::select(-id)
 
+
+best_no_windows <- best_mtry |> filter(method == "Counts")  |> pull(comps)
+
 # do PCA and select number of windows that comes from bst 
 pca_windows <- prcomp(x=mvad_states_wide, center=TRUE, scale=TRUE)
 windows_pcs <- pca_windows$x[,1:best_no_windows]
 colnames(windows_pcs) <- paste0("PC_",1:best_no_windows)
 
-best_no_windows <- best_mtry |> filter(method == "Counts")  |> pull(comps)
+
 
 mvad_windows <- cbind(num_month_em_last_year, mvad_covars, windows_pcs)
 colnames(mvad_windows)[1] <- "y"
@@ -441,8 +466,7 @@ mvad_harm <- cbind(mvad_covars, harmonics) %>%
   mutate(y = num_month_em_last_year)
 
 
-# function to make variable importance plot
-var_imp_plot <- function(mvad_data, best_mtry, title_string, subtitle_string = "") {
+var_imp_plot <- function(mvad_data, best_mtry, title_string, subtitle_string = "", custom_labs = FALSE) {
   # must be a "y" column in the dataframe (which is equivalent to num_month_emp)
     # fit with hard clusters 
   fit.rf <- ranger(y ~ .,
@@ -457,23 +481,50 @@ var_imp_plot <- function(mvad_data, best_mtry, title_string, subtitle_string = "
     rename(var_imp = fit.rf.variable.importance)
 
 
-  p <- ggplot(data = var_imps, aes(x=var_imp, y=reorder(covar, var_imp))) + geom_col(fill="steelblue") + 
-    labs(x="Variable Importance", y="Covariate", title=title_string, subtitle=subtitle_string)
+  if (custom_labs == TRUE) {
+
+      cluster_stats <- mvad_data |> 
+        summarize(across(starts_with("Cluster"), ~ sum(.x) / n() * 100)) |>
+        pivot_longer(everything(), names_to = "covar", values_to = "pct") |> # Use "covar" here
+        mutate(pct_label = paste0(round(pct, 2), "%"))
+
+      var_imps <- var_imps |>
+        left_join(cluster_stats |> dplyr::select(covar, pct_label), by = "covar") |>
+        mutate(cl_label = ifelse(is.na(pct_label), "", pct_label)) |>
+        dplyr::select(-pct_label)
+
+      p <- ggplot(data = var_imps, aes(x=var_imp, y=reorder(covar, var_imp))) + geom_col(fill="steelblue") + 
+          geom_text(aes(label = cl_label), size = 3, nudge_x = 1, hjust = 0) + 
+        labs(x="Variable Importance", y="Covariate", title=title_string, subtitle=subtitle_string)
+    } else {
+      p <- ggplot(data = var_imps, aes(x=var_imp, y=reorder(covar, var_imp))) + geom_col(fill="steelblue") + 
+        labs(x="Variable Importance", y="Covariate", title=title_string, subtitle=subtitle_string)
+    }
 
   return(p)
-
-
 }
 
 
+best_mtry_hard <- best_mtry |> filter(method == "OM INDELSLOG (Hard)" )  |> pull(modal_mtry)
 
-best_mtry_windows <- best_avg_mtry |> filter(method == "Counts")  |> pull(mtry)
+# Make Variable Importance Plots
+hard_vi <- var_imp_plot(mvad_data = mvad_hard_cl, 
+  best_mtry = best_mtry_hard,
+  title_string = "Variable Importance For OM INDELSLOG (Hard)", 
+  subtitle_string = paste0("Mtry (Modal) = ",  best_mtry_hard, ", Hard Clusters = ", best_no_hard_cl), custom_labs=TRUE)
+
+
+pdf("plots/VarImpHardCl.pdf", width = 8, height = 6)
+hard_vi
+dev.off()
+
+best_mtry_windows <- best_mtry |> filter(method == "Counts")  |> pull(modal_mtry)
 
 # Make Variable Importance Plots
 wind_vi <- var_imp_plot(mvad_data = mvad_windows, 
   best_mtry = best_mtry_windows,
   title_string = "Variable Importance For Counts", 
-  subtitle_string = paste0("Mtry = ",  best_mtry_windows, ", Count Principal Components = ", best_no_windows)
+  subtitle_string = paste0("Mtry (Modal) = ",  best_mtry_windows, ", Count Principal Components = ", best_no_windows)
 )
 
 pdf("plots/VarImpCounts.pdf", width = 8, height = 6)
@@ -482,13 +533,13 @@ dev.off()
 
 
 
-best_mtry_harms <- best_mtry  |> filter(method == "CFDA")  |> pull(mtry)
+best_mtry_harms <- best_mtry  |> filter(method == "CFDA")  |> pull(modal_mtry)
 
 # Make Variable Importance Plots
 harm_vi <- var_imp_plot(mvad_data = mvad_harm, 
   best_mtry = best_mtry_harms,
   title_string = "Variable Importance For CFDA", 
-  subtitle_string = paste0("Mtry = ",  best_mtry_harms, ", Harmonics = ", best_no_harms)
+  subtitle_string = paste0("Mtry (Modal) = ",  best_mtry_harms, ", Harmonics = ", best_no_harms)
 )
 
 pdf("plots/VarImpHarms.pdf", width = 8, height = 6)
@@ -497,28 +548,157 @@ dev.off()
 
 
 
-best_mtry_soft <- best_avg_mtry |> filter(method == )  |> pull(mtry)
+best_mtry_soft <- best_mtry |> filter(method == "LCS (Soft)")  |> pull(modal_mtry)
 
 # Make Variable Importance Plots
 soft_vi <- var_imp_plot(mvad_data = mvad_soft_cl, 
   best_mtry = best_mtry_soft,
-  title_string = "Variable Importance For HHHHHHH", 
-  subtitle_string = paste0("Mtry = ",  best_mtry_harms, ", Soft Clusters = ", best_no_soft_cl)
+  title_string = "Variable Importance For LCS (Soft)", 
+  subtitle_string = paste0("Mtry (Modal) = ",  best_mtry_soft, ", Soft Clusters = ", best_no_soft_cl)
 )
 
 pdf("plots/VarImpSoftCl.pdf", width = 8, height = 6)
 soft_vi
 dev.off()
 
-best_mtry_hard <- best_mtry |> filter(method == )  |> pull(avg_mtry)
 
-# Make Variable Importance Plots
-hard_vi <- var_imp_plot(mvad_data = mvad_hard_cl, 
-  best_mtry = best_mtry_hard,
-  title_string = "Variable Importance For )", 
-  subtitle_string = paste0("Mtry = ",  best_mtry_hard, ", Hard Clusters = ", best_no_hard_cl)
-)
 
-pdf("plots/VarImpHardCl.pdf", width = 8, height = 6)
-hard_vi
-dev.off()
+
+
+# Sequence Correlation Plots 
+
+
+# Sequence Performance plots - demos and non demos
+
+seq_lin_nd <- readRDS("cv_outputs/SeqMetsRes/CV_SeqMetsLinear_NoDemos.rds")
+seq_lin_d <- readRDS("cv_outputs/SeqMetsRes/CV_SeqMetsLinear.rds")
+seq_nonlin_nd <- readRDS("cv_outputs/SeqMetsRes/CV_SeqMetsNonLinear_NoDemos.rds")
+seq_nonlin_d <- readRDS("cv_outputs/SeqMetsRes/CV_SeqMetsNonLinear.rds")
+
+
+# linear process
+lin_seq_best <- function(seq_lin_output) {
+
+  combined_mse <- simplify2array(seq_lin_output$seq_mses)
+  seq_3d <- simplify2array(combined_mse)
+
+  comp_means <- sqrt(apply(seq_3d, 2, mean))
+
+  best_n_seq_mets_pc <- safe_which_min(comp_means)
+
+  df <- data.frame(
+      Index = 1:length(comp_means),
+      RMSE   = comp_means, 
+      stringsAsFactors = FALSE)
+  return(df)
+}
+
+
+nonlin_seq_best <-  function(seq_nonlin_output) {
+
+  
+  seqs_list <- simplify2array(seq_nonlin_output$seq_mses)
+
+  # average across folds
+  avg_cv_mse <- apply(seqs_list, c(2, 3, 4), mean, na.rm = TRUE)
+  
+  # essentially the location maps to the mtry values
+  best_mtry_cv <- apply(seqs_list, c(1, 2, 4), safe_which_min)
+  # find the mode across the 5 folds 
+  modal_mtry_cv <- apply(best_mtry_cv, c(2,3), safe_mode)
+
+  # pull comps based on that modal best 
+  modal_mtry_indices <- cbind(
+    as.vector(row(modal_mtry_cv)), 
+    as.vector(modal_mtry_cv), 
+    as.vector(col(modal_mtry_cv))
+  )
+
+  # copy dimensions of avg_cv_cov 
+  dims <- dim(avg_cv_mse)
+
+  best_avg_mse_comps_cv <- matrix(avg_cv_mse[modal_mtry_indices], nrow = dims[1], ncol = dims[3])
+
+  avg_rmse_comps <- sqrt(apply(best_avg_mse_comps_cv, 1, mean))
+
+  df <- data.frame(
+      Index = 1:length(avg_rmse_comps),
+      RMSE   = avg_rmse_comps, 
+      stringsAsFactors = FALSE)
+}
+
+
+seq_lin_d_rmses <- lin_seq_best(seq_lin_d)
+seq_lin_nd_rmses <- lin_seq_best(seq_lin_nd)
+
+seq_nonlin_d_rmses <- nonlin_seq_best(seq_nonlin_d)
+seq_nonlin_nd_rmses <- nonlin_seq_best(seq_nonlin_nd)
+
+best_nseq_nonlin_d_rmses <- which.min(seq_nonlin_d_rmses$RMSE)
+best_nseq_nonlin_nd_rmses <- which.min(seq_nonlin_nd_rmses$RMSE)
+best_seq_nonlin_d_rmse <- min(seq_nonlin_d_rmses$RMSE)
+best_seq_nonlin_nd_rmse <- min(seq_nonlin_nd_rmses$RMSE)
+
+
+print("Nonlin SeqMets - with Demographics")
+print(best_nseq_nonlin_d_rmses)
+print(best_seq_nonlin_d_rmse)
+
+print("Nonlin SeqMets - w/o Demographics")
+print(best_nseq_nonlin_nd_rmses)
+print(best_seq_nonlin_nd_rmse)
+
+print("Lin SeqMets - with Demographics")
+print(best_nseq_lin_d_rmses)
+print(best_seq_lin_d_rmse)
+
+print("Lin SeqMets - w/o Demographics")
+print(best_nseq_lin_nd_rmses)
+print(best_seq_lin_nd_rmse)
+
+
+
+
+# MSE Plot
+get_method_metrics_seq_clust <- function(data_list, method_name) {
+
+  # pull out cross validated mses for given method
+  method_mse <- lapply(data_list$mse, function(x) x[[method_name]])
+  combined_mse <- simplify2array(method_mse)
+
+  method_cov <- lapply(data_list$cov, function(x) x[[method_name]])
+  combined_cov <- simplify2array(method_cov)
+  
+  method_mpiw <- lapply(data_list$mpiw, function(x) x[[method_name]])
+  combined_mpiw <- simplify2array(method_mpiw)
+
+  if (method_name == "demos") {
+    mean_mse <- mean(combined_mse)
+    mean_cov <- mean(combined_cov)
+    mean_mpiw <- mean(combined_mpiw)
+
+  } else {
+    # find means across the folds (of all cross )
+    mean_mse <- apply(combined_mse, 2, mean, na.rm = TRUE)
+    mean_cov <- apply(combined_cov, 2, mean, na.rm = TRUE)
+    mean_mpiw <- apply(combined_mpiw, 2, mean, na.rm = TRUE)
+  }
+
+  df <- data.frame(
+      Method = method_name, 
+      Index = 1:length(mean_mse),
+      RMSE   = sqrt(mean_mse), 
+      COV    = mean_cov, 
+      MPIW   = mean_mpiw,
+      stringsAsFactors = FALSE)
+
+
+  df <- df |> mutate(Method = recode(Method, !!!method_labs))
+
+  return(df)
+}
+
+
+seq_clust_lin_output <- seq_lin_d
+
+get_method_metrics(seq_lin_d$mse)
