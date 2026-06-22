@@ -18,7 +18,6 @@ library(doParallel)
 source("seqout_utils.R")
 
 
-
 # Detect cores allocated by Slurm
 n_cores <- as.integer(Sys.getenv("SLURM_CPUS_PER_TASK"))
 # Register the cluster
@@ -47,6 +46,7 @@ comp$lcs_hard <- array(NA,c(folds,nClusts, nCovars + nClusts - 2))
 comp$lcs_soft <- array(NA,c(folds,nSoftClusts, nCovars + nSoftClusts - 2))
 comp$windows <- array(NA,c(folds,nWindows, nCovars + nWindows - 1))
 comp$harm <- array(NA,c(folds,nHarms, nCovars + nHarms - 1 ))
+comp$demos <- array(NA, c(folds, nCovars - 1))
 
 cv_comp <- list()
 cv_comp$mse <- replicate(nCVs, comp, simplify = FALSE)
@@ -99,7 +99,6 @@ results <- foreach(m = 1:nrow(task_vec), .packages = c("tidyverse", "cluster", "
   fuzz_soft <- 1.5
 
 
-
   # Arrays for holding outcomes fits 
   # soft clusters - 2 (because we never look at index=1 clusters and indexing is always from 1)
   mpiw.cv.harm_rf <- cov.cv.harm_rf <- mse.cv.harm_rf <- array(NA,c(folds,nHarms, nCovars + nHarms - 1 ))
@@ -111,6 +110,28 @@ results <- foreach(m = 1:nrow(task_vec), .packages = c("tidyverse", "cluster", "
   mpiw.cv.lcs_hard_rf <- cov.cv.lcs_hard_rf <- mse.cv.lcs_hard_rf <- array(NA,c(folds,nClusts, nCovars + nClusts - 2))
   mpiw.cv.lcs_soft_rf <- cov.cv.lcs_soft_rf <- mse.cv.lcs_soft_rf <- array(NA,c(folds,nSoftClusts, nCovars + nSoftClusts - 2))
   mpiw.cv.rmets_rf <- cov.cv.rmets_rf  <- mse.cv.rmets_rf <- array(NA,c(folds, nSeqPcs, nCovars + nSeqPcs - 1))
+  mpiw.cv.demos <- cov.cv.demos  <- mse.cv.demos <- array(NA,c(folds, nCovars - 1))
+
+
+  ### Cross Validation for Clustering Methods with OM-Transition Rate 
+  for (i in 1:folds) {
+    cat("Fold Number ",i,"\n")
+    test_idx <- idx == i
+    train_idx <- !test_idx
+    
+    # data frame of mvad demos split into training and testing 
+    demos_data <- mvad_covars |> mutate(y = num_month_em_last_year)
+
+    for (j in 1:(nCovars - 1)) {
+      
+      # Fit with different mtry 
+      demos_output <- fit_rf(demos_data[train_idx,], demos_data[test_idx,], mtry = j)
+
+      mse.cv.demos[i, j] <- demos_output$mse
+      cov.cv.demos[i, j] <- demos_output$coverage
+      mpiw.cv.demos[i, j] <- demos_output$mpiw
+    }
+  }
 
 
 
@@ -379,6 +400,7 @@ results <- foreach(m = 1:nrow(task_vec), .packages = c("tidyverse", "cluster", "
   mse.comp$lcs_soft <- mse.cv.lcs_soft_rf 
   mse.comp$windows <- mse.cv.windows_rf 
   mse.comp$harm <- mse.cv.harm_rf 
+  mse.comp$demos <- mse.cv.demos
 
   
   cov.comp <- list()
@@ -390,6 +412,7 @@ results <- foreach(m = 1:nrow(task_vec), .packages = c("tidyverse", "cluster", "
   cov.comp$lcs_soft <- cov.cv.lcs_soft_rf 
   cov.comp$windows <- cov.cv.windows_rf 
   cov.comp$harm <- cov.cv.harm_rf
+  cov.comp$demos <- cov.cv.demos
 
   mpiw.comp <- list()
   mpiw.comp$om_trate_hard <-  mpiw.cv.om_trate_hard_rf 
@@ -400,6 +423,7 @@ results <- foreach(m = 1:nrow(task_vec), .packages = c("tidyverse", "cluster", "
   mpiw.comp$lcs_soft <- mpiw.cv.lcs_soft_rf 
   mpiw.comp$windows <- mpiw.cv.windows_rf 
   mpiw.comp$harm <-  mpiw.cv.harm_rf 
+  mpiw.comp$demos <- mpiw.cv.demos
 
   list(mpiw.comp=mpiw.comp, cov.comp=cov.comp, mse.comp=mse.comp, cv_index=cv_index)
     
