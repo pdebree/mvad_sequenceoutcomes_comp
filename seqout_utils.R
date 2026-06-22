@@ -44,7 +44,7 @@ assign_new <- function(dist_mat,train_idx,train.clust,test_idx) {
 }
 
 # Assigns soft cluster membership probabilities 
-assign_new_fanny <- function(dist_mat,train.idx,train.memb,test.idx,memb.exp=1.5,n.draws=300,prior.n.equiv=100) {
+assign_new_fanny <- function(dist_mat,train.idx,train.memb,test.idx,memb.exp=1.5,n.draws=200,prior.n.equiv=100) {
   
   len <- length(train.idx) # all members 
   simmat <- 1-dist_mat/max(dist_mat) # all similarities 
@@ -255,6 +255,7 @@ fit_rf <- function(train_data, test_data, mtry = NA) {
                         mtry = mtry_tr,
                         keep.inbag = TRUE,
                         respect.unordered.factors = TRUE,
+                        classification = FALSE,
                         quantreg = TRUE)
 
 
@@ -334,7 +335,7 @@ hard_cluster_sim <- function(clusterward, nClusts, y, train_idx, test_idx, dist_
   return(list(train_data=train_data, test_data=test_data))
 }
   
-soft_cluster <- function(dist_matrix,train_idx,test_idx, nClusts, fuzziness=1.5, covars, y) {
+soft_cluster <- function(dist_matrix,train_idx,test_idx, nClusts, fuzziness=1.5, covars, y, prior.n.equiv=100) {
   
   clustering_soft <- fanny(dist_matrix[train_idx, train_idx], 
                            k=nClusts, memb.exp=fuzziness, diss=TRUE, maxit = 1000)
@@ -342,7 +343,7 @@ soft_cluster <- function(dist_matrix,train_idx,test_idx, nClusts, fuzziness=1.5,
   train.memb <- clustering_soft$membership
   test.memb <- assign_new_fanny(dist_mat=dist_matrix,train.idx=train_idx, train.memb=train.memb, 
                                test.idx=test_idx,memb.exp=fuzziness,n.draws=200,
-                               prior.n.equiv=100) 
+                               prior.n.equiv=prior.n.equiv) 
 
   converged <- (clustering_soft$convergence["converged"] == 1)
   
@@ -364,7 +365,7 @@ soft_cluster <- function(dist_matrix,train_idx,test_idx, nClusts, fuzziness=1.5,
 }
 
 
-soft_cluster_sim <- function(dist_matrix,train_idx,test_idx, nClusts, fuzziness=1.5, y) {
+soft_cluster_sim <- function(dist_matrix,train_idx,test_idx, nClusts, fuzziness=1.5, y, prior.n.equiv=100) {
   
   clustering_soft <- fanny(dist_matrix[train_idx, train_idx], 
                            k=nClusts, memb.exp=fuzziness, diss=TRUE, maxit = 1000)
@@ -372,7 +373,7 @@ soft_cluster_sim <- function(dist_matrix,train_idx,test_idx, nClusts, fuzziness=
   train.memb <- clustering_soft$membership
   test.memb <- assign_new_fanny(dist_mat=dist_matrix,train.idx=train_idx, train.memb=train.memb, 
                                test.idx=test_idx,memb.exp=fuzziness,n.draws=200,
-                               prior.n.equiv=100) 
+                               prior.n.equiv=prior.n.equiv) 
 
   converged <- (clustering_soft$convergence["converged"] == 1)
   
@@ -472,6 +473,20 @@ safe_which_min <- function(x) {
   } else {
     return(which.min(x))
   }
+}
+
+safe_mode <- function(x) {
+  if (all(is.na(x))) {
+    return(NA) # Returns NA instead of integer(0)
+  } else {
+    if (length(unique(x)) == length(x)) {
+      return(round(mean(x), 0))
+    } else {
+      tab <- table(x)
+      return(as.integer(names(tab)[which.max(tab)]))
+    }
+  }
+
 }
 
 
