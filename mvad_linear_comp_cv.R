@@ -11,12 +11,12 @@ library(doParallel)
 
 source("seqout_utils.R")
 
-# # Detect cores allocated by Slurm
-# n_cores <- as.integer(Sys.getenv("SLURM_CPUS_PER_TASK"))
-# # Register the cluster
-# cl <- makeCluster(n_cores)
-# clusterSetRNGStream(cl, iseed = 123) # for reproducability
-# registerDoParallel(cl)
+# Detect cores allocated by Slurm
+n_cores <- as.integer(Sys.getenv("SLURM_CPUS_PER_TASK"))
+# Register the cluster
+cl <- makeCluster(n_cores)
+clusterSetRNGStream(cl, iseed = 123) # for reproducability
+registerDoParallel(cl)
 
 
 folds <- 5
@@ -38,6 +38,7 @@ comp$lcs_hard <- array(NA,c(folds,nClusts))
 comp$lcs_soft <- array(NA,c(folds,nClusts))
 comp$windows <- array(NA,c(folds,nWindows))
 comp$harm <- array(NA,c(folds,nHarms))
+comp$mets <- array(NA, c(folds, nSeqPcs))
 comp$demos <- array(NA, c(folds))
 
 cv_comp <- list()
@@ -107,7 +108,7 @@ results <- foreach(m = 1:nrow(task_vec), .packages = c("tidyverse", "cluster", "
   mse.cv.demos <- cov.cv.demos <- mpiw.cv.demos  <- array(NA,c(folds))
 
 
-  ### Cross Validation for Clustering Methods with OM-Transition Rate 
+  ### Cross Validation for Demographics only
   for (i in 1:folds) {
     cat("Fold Number ",i,"\n")
     test_idx <- idx == i
@@ -370,7 +371,70 @@ results <- foreach(m = 1:nrow(task_vec), .packages = c("tidyverse", "cluster", "
       mpiw.cv.harm[i,j] <- harm_fit$mpiw
 
     }
-  } 
+  }
+
+
+  # Add Sequence Metrics 
+  mvad_states <- mvad[,15:50]
+
+  # encodings for the statebadness 
+  st_alphabet <- alphabet(mvad.seq) 
+  # Example: If alphabet is "A", "B", "C"
+  st_prec_values <- c(1, -1, -1, 2, -1, -1) # A=1 (low badness), C=3 (high badness)
+  names(st_prec_values) <- st_alphabet
+
+  mvad_rmetrics <- mvad_states %>% mutate(
+    spells=seqindic(mvad.seq, "dlgth")$Dlgth, 
+    visited_states=seqindic(mvad.seq, "visited")$Visited, 
+    num_of_trans = seqindic(mvad.seq,"trans")$Trans, 
+    mean_spell_dur = seqindic(mvad.seq,"meand")$MeanD, 
+    # pedantic - this one pulled out a "seqivardur" "numeric" datatype (not sure 
+    # how it did both, so I have to force it to be numeric)
+    sd_spell_dur = as.numeric(seqindic(mvad.seq,"dustd")$Dustd), 
+    # Diversity I
+    entropy = seqindic(mvad.seq,"entr")$Entr, 
+    # more interested in states than spells (see paper)
+    dss_subs = seqindic(mvad.seq,"nsubs")$Nsubs, 
+    complexity = seqindic(mvad.seq,"cplx")$Cplx, 
+    # could look at other turbulence measures 
+    turbulence = seqindic(mvad.seq,"turb")$Turb, 
+    badness = seqibad(seqdata = mvad.seq,stprec = st_prec_values), 
+    degradation = seqidegrad(seqdata = mvad.seq, stprec = st_prec_values), 
+    insecurity = seqinsecurity(seqdata = mvad.seq, stprec = st_prec_values))
+
+  rmetrics <- mvad_rmetrics[,37:48] 
+
+  # Loop over folds to find best performance 
+  for (i in 1:folds) {
+    cat("Fold Number ",i,"\n")
+    test_idx <- idx == i
+    train_idx <- !test_idx
+    
+    pca_comps_train <- prcomp(x=rmetrics[train_idx, ], center=TRUE, scale=TRUE)
+    
+    train_scores <- pca_comps_train$x
+    test_scores <- predict(pca_comps_train, newdata =rmetrics[test_idx, ]) 
+    
+    train_mvad_rmets <- cbind(mvad_covars[train_idx,], as.data.frame(train_scores))
+    test_mvad_rmets <- cbind(mvad_covars[test_idx,], as.data.frame(test_scores))
+    
+    # find best performance in fold 
+    for (j in 1:nSeqPcs) {
+
+      train_seq <- train_mvad_rmets[,1:(11+j)] %>% mutate(y=num_month_em_last_year[train_idx])
+      test_seq <- test_mvad_rmets[,1:(11+j)] %>% mutate(y=num_month_em_last_year[test_idx])
+
+
+      seqs_fit <- fit_linear(train_seq, test_seq)
+      print(seqs_fit$mse)
+
+      mse.cv.mets[i,j] <- seqs_fit$mse
+      cov.cv.mets[i,j] <- seqs_fit$coverage
+      mpiw.cv.mets[i,j] <- seqs_fit$mpiw
+
+    }
+  }
+   
 
   mse.comp <- list()
   mse.comp$om_trate_hard <- mse.cv.om_trate_hard 

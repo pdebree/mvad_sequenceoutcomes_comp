@@ -46,6 +46,7 @@ comp$lcs_hard <- array(NA,c(folds,nClusts, nCovars + nClusts - 2))
 comp$lcs_soft <- array(NA,c(folds,nSoftClusts, nCovars + nSoftClusts - 2))
 comp$windows <- array(NA,c(folds,nWindows, nCovars + nWindows - 1))
 comp$harm <- array(NA,c(folds,nHarms, nCovars + nHarms - 1 ))
+comp$mets <- array(NA, c(folds, nSeqPcs, nCovars + nSeqPcs - 1))
 comp$demos <- array(NA, c(folds, nCovars - 1))
 
 cv_comp <- list()
@@ -134,7 +135,6 @@ results <- foreach(m = 1:nrow(task_vec), .packages = c("tidyverse", "cluster", "
   }
 
 
-
   ### CFDA Cross Validation 
 
   M <- 36-1 #number of initial months-1
@@ -188,7 +188,7 @@ results <- foreach(m = 1:nrow(task_vec), .packages = c("tidyverse", "cluster", "
 
         harm_fit <- fit_rf(train_harm, test_harm, mtry = k)
         mse.cv.harm_rf[i, j, k] <- harm_fit$mse
-        cov.cv.harm_rf[i, j, k] <- harm_fit$cov
+        cov.cv.harm_rf[i, j, k] <- harm_fit$coverage
         mpiw.cv.harm_rf[i, j, k] <- harm_fit$mpiw
 
 
@@ -244,7 +244,7 @@ results <- foreach(m = 1:nrow(task_vec), .packages = c("tidyverse", "cluster", "
         wind_fit <- fit_rf(
           train_data=train_mvad_windows[,1:(11+j)], test_data = test_mvad_windows, mtry=k)
         mse.cv.windows_rf[i,j,k] <- wind_fit$mse
-        cov.cv.windows_rf[i, j, k] <- wind_fit$cov
+        cov.cv.windows_rf[i, j, k] <- wind_fit$coverage
         mpiw.cv.windows_rf[i, j, k] <- wind_fit$mpiw
       }
     }
@@ -284,14 +284,14 @@ results <- foreach(m = 1:nrow(task_vec), .packages = c("tidyverse", "cluster", "
       for (k in 1:(nCovars + j - 2)) {
         hard_om_fit <- fit_rf(train_data=train_om_hard, test_data=test_om_hard, mtry=k)
         mse.cv.om_trate_hard_rf[i,j,k] <- hard_om_fit$mse
-        cov.cv.om_trate_hard_rf[i, j, k] <- hard_om_fit$cov
+        cov.cv.om_trate_hard_rf[i, j, k] <- hard_om_fit$coverage
         mpiw.cv.om_trate_hard_rf[i, j, k] <- hard_om_fit$mpiw
 
         # k is only evaluated for this j if the number of soft clusters is reached
         if (j < nSoftClusts && soft_cluster_data$converged) {
           soft_om_fit <- fit_rf(train_data=train_om_soft, test_data=test_om_soft, mtry=k)
           mse.cv.om_trate_soft_rf[i,j,k] <- soft_om_fit$mse
-          cov.cv.om_trate_soft_rf[i, j, k] <- soft_om_fit$cov
+          cov.cv.om_trate_soft_rf[i, j, k] <- soft_om_fit$coverage
           mpiw.cv.om_trate_soft_rf[i, j, k] <- soft_om_fit$mpiw
 
         }
@@ -333,7 +333,7 @@ results <- foreach(m = 1:nrow(task_vec), .packages = c("tidyverse", "cluster", "
       for (k in 1:(nCovars + j - 2)) {
         hard_slog_fit <- fit_rf(train_data=train_om_hard, test_data=test_om_hard, mtry=k)
         mse.cv.om_slog_hard_rf[i,j,k] <- hard_slog_fit$mse
-        cov.cv.om_slog_hard_rf[i, j, k] <- hard_slog_fit$cov
+        cov.cv.om_slog_hard_rf[i, j, k] <- hard_slog_fit$coverage
         mpiw.cv.om_slog_hard_rf[i, j, k] <- hard_slog_fit$mpiw
         
         # make sure we don't look at 25 columns (but we still want to look at mtry up to the number of soft clusters)
@@ -341,7 +341,7 @@ results <- foreach(m = 1:nrow(task_vec), .packages = c("tidyverse", "cluster", "
         if (j < nSoftClusts && soft_cluster_data$converged) {
           soft_slog_fit <- fit_rf(train_data=train_om_soft, test_data=test_om_soft, mtry=k)
           mse.cv.om_slog_soft_rf[i,j,k] <- soft_slog_fit$mse
-          cov.cv.om_slog_soft_rf[i, j, k] <- soft_slog_fit$cov
+          cov.cv.om_slog_soft_rf[i, j, k] <- soft_slog_fit$coverage
           mpiw.cv.om_slog_soft_rf[i, j, k] <- soft_slog_fit$mpiw
         }
       }
@@ -377,18 +377,88 @@ results <- foreach(m = 1:nrow(task_vec), .packages = c("tidyverse", "cluster", "
 
         hard_lcs_fit <- fit_rf(train_data=train_lcs_hard, test_data=test_lcs_hard, mtry=k)
         mse.cv.lcs_hard_rf[i,j,k] <- hard_lcs_fit$mse
-        cov.cv.lcs_hard_rf[i, j, k] <- hard_lcs_fit$cov
+        cov.cv.lcs_hard_rf[i, j, k] <- hard_lcs_fit$coverage
         mpiw.cv.lcs_hard_rf[i, j, k] <- hard_lcs_fit$mpiw
 
         if (j < nSoftClusts && soft_cluster_data$converged) {
           soft_lcs_fit <- fit_rf(train_data=train_lcs_soft, test_data=test_lcs_soft, mtry=k)
           mse.cv.lcs_soft_rf[i,j,k] <- soft_lcs_fit$mse
-          cov.cv.lcs_soft_rf[i, j, k] <- soft_lcs_fit$cov
+          cov.cv.lcs_soft_rf[i, j, k] <- soft_lcs_fit$coverage
           mpiw.cv.lcs_soft_rf[i, j, k] <- soft_lcs_fit$mpiw
         }
       }
     }
   }
+
+
+    # Sequence Metrics: 
+
+  mvad_states <- mvad[,15:50]
+
+  # encodings for the statebadness 
+  st_alphabet <- alphabet(mvad.seq) 
+  # Example: If alphabet is "A", "B", "C"
+  st_prec_values <- c(1, -1, -1, 2, -1, -1) # A=1 (low badness), C=3 (high badness)
+  names(st_prec_values) <- st_alphabet
+
+  mvad_rmetrics <- mvad_states %>% mutate(
+    spells=seqindic(mvad.seq, "dlgth")$Dlgth, 
+    visited_states=seqindic(mvad.seq, "visited")$Visited, 
+    num_of_trans = seqindic(mvad.seq,"trans")$Trans, 
+    mean_spell_dur = seqindic(mvad.seq,"meand")$MeanD, 
+    # pedantic - this one pulled out a "seqivardur" "numeric" datatype (not sure 
+    # how it did both, so I have to force it to be numeric)
+    sd_spell_dur = as.numeric(seqindic(mvad.seq,"dustd")$Dustd), 
+    # Diversity I
+    entropy = seqindic(mvad.seq,"entr")$Entr, 
+    # more interested in states than spells (see paper)
+    dss_subs = seqindic(mvad.seq,"nsubs")$Nsubs, 
+    complexity = seqindic(mvad.seq,"cplx")$Cplx, 
+    # could look at other turbulence measures 
+    turbulence = seqindic(mvad.seq,"turb")$Turb, 
+    badness = seqibad(seqdata = mvad.seq,stprec = st_prec_values), 
+    degradation = seqidegrad(seqdata = mvad.seq, stprec = st_prec_values), 
+    insecurity = seqinsecurity(seqdata = mvad.seq, stprec = st_prec_values))
+
+
+  # Training set up 
+  rmetrics <- mvad_rmetrics[,37:48] 
+  #nSeqPcs <- ncol(rmetrics)
+
+  # go through folds in repeat
+  for (i in 1:folds) {
+    cat("Fold Number ",i,"\n")
+    test_idx <- idx == i
+    train_idx <- !test_idx
+    
+    train_seqmets <- rmetrics[train_idx, ]
+    test_seqmets <- rmetrics[test_idx, ]
+    
+    pca_comps_train <- prcomp(x=train_seqmets, center=TRUE, scale=TRUE)
+    
+    train_scores <- pca_comps_train$x
+    test_scores <- predict(pca_comps_train, newdata = test_seqmets) 
+    
+    for (j in 1:nSeqPcs) {
+
+      train_rmets <- cbind(num_month_em_last_year[train_idx], mvad_covars[train_idx,], train_scores[,1:j,drop = FALSE])
+      test_rmets <- cbind(num_month_em_last_year[test_idx], mvad_covars[test_idx,], test_scores[,1:j,drop = FALSE])
+
+      colnames(train_rmets)[1] <- "y"
+      colnames(test_rmets)[1] <- "y"
+      
+      for (k in 1:(nCovars + j - 1)) {
+        mets_fit <- fit_rf(train_data=train_rmets, test_data=test_rmets, mtry=k)
+        mse.cv.rmets_rf[i,j,k] <- mets_fit$mse
+        cov.cv.rmets_rf[i, j, k] <- mets_fit$coverage
+        mpiw.cv.rmets_rf[i, j, k] <- mets_fit$mpiw
+      }
+    }
+  }
+
+
+
+  
     
 
   mse.comp <- list()
@@ -401,6 +471,7 @@ results <- foreach(m = 1:nrow(task_vec), .packages = c("tidyverse", "cluster", "
   mse.comp$windows <- mse.cv.windows_rf 
   mse.comp$harm <- mse.cv.harm_rf 
   mse.comp$demos <- mse.cv.demos
+  mse.comp$mets <- mse.cv.rmets_rf
 
   
   cov.comp <- list()
@@ -413,6 +484,7 @@ results <- foreach(m = 1:nrow(task_vec), .packages = c("tidyverse", "cluster", "
   cov.comp$windows <- cov.cv.windows_rf 
   cov.comp$harm <- cov.cv.harm_rf
   cov.comp$demos <- cov.cv.demos
+  cov.comp$mets <- cov.cv.rmets_rf
 
   mpiw.comp <- list()
   mpiw.comp$om_trate_hard <-  mpiw.cv.om_trate_hard_rf 
@@ -424,6 +496,7 @@ results <- foreach(m = 1:nrow(task_vec), .packages = c("tidyverse", "cluster", "
   mpiw.comp$windows <- mpiw.cv.windows_rf 
   mpiw.comp$harm <-  mpiw.cv.harm_rf 
   mpiw.comp$demos <- mpiw.cv.demos
+  mpiw.comp$mets <- mpiw.cv.rmets_rf
 
   list(mpiw.comp=mpiw.comp, cov.comp=cov.comp, mse.comp=mse.comp, cv_index=cv_index)
     
