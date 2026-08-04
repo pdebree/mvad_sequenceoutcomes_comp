@@ -17,7 +17,6 @@ library(doParallel)
 
 source("seqout_utils.R")
 
-
 # Detect cores allocated by Slurm
 n_cores <- as.integer(Sys.getenv("SLURM_CPUS_PER_TASK"))
 # Register the cluster
@@ -27,32 +26,51 @@ registerDoParallel(cl)
 
 
 folds <- 5
+nCVs <- 20
+
 nClusts <- 25 
 nWindows <- 16 
 nHarms <- 25
-nSeqPcs <- 12
-fuzz_soft <- 1.5
-nSoftClusts <- 13 
 nCovars <- 11 
+nSeqMetsPCs <- 3
 
-nCVs <- 20
+fuzz_soft <- 1.75
+max_soft_iters <- 2000
+tolerance <- 1e-10
+knn_soft_assign <- 15
 
 comp <- list()
-comp$om_trate_hard <- array(NA,c(folds,nClusts, nCovars + nClusts - 2))
-comp$om_trate_soft <- array(NA,c(folds,nSoftClusts,nCovars + nSoftClusts - 2))
-comp$om_slog_hard <- array(NA,c(folds,nClusts, nCovars + nClusts - 2))
-comp$om_slog_soft <- array(NA,c(folds,nSoftClusts, nCovars + nSoftClusts - 2))
-comp$lcs_hard <- array(NA,c(folds,nClusts, nCovars + nClusts - 2))
-comp$lcs_soft <- array(NA,c(folds,nSoftClusts, nCovars + nSoftClusts - 2))
+
+# here mtry for hard clustering becomes nCovers + 1 - 1 
+comp$om_trate_hard <- array(NA,c(folds,nClusts, nCovars))
+comp$om_trate_soft <- array(NA,c(folds,nClusts,nCovars + nClusts - 2))
+comp$om_slog_hard <- array(NA,c(folds,nClusts, nCovars))
+comp$om_slog_soft <- array(NA,c(folds,nClusts, nCovars + nClusts - 2))
+comp$lcs_hard <- array(NA,c(folds,nClusts, nCovars))
+comp$lcs_soft <- array(NA,c(folds,nClusts, nCovars + nClusts - 2))
 comp$windows <- array(NA,c(folds,nWindows, nCovars + nWindows - 1))
 comp$harm <- array(NA,c(folds,nHarms, nCovars + nHarms - 1 ))
-comp$mets <- array(NA, c(folds, nSeqPcs, nCovars + nSeqPcs - 1))
 comp$demos <- array(NA, c(folds, nCovars - 1))
+comp$om_trate_soft_3pc <- array(NA,c(folds, nClusts, nCovars + nClusts + 3 - 2))
+comp$om_slog_soft_3pc <- array(NA,c(folds, nClusts, nCovars + nClusts + 3 - 2))
+comp$lcs_soft_3pc <- array(NA,c(folds, nClusts, nCovars + nClusts + 3 - 2))
+comp$om_slog_hard_3pc <- array(NA,c(folds,nClusts, nCovars + 3))
+comp$windows_3pc <- array(NA,c(folds,nWindows, nCovars + nWindows + 3 - 1))
+comp$harm_3pc <- array(NA,c(folds,nHarms, nCovars + nHarms  + 3 - 1 ))
+
+
+# Don't need to add in Mtry because we will do multiply mtry vals for the same fit
+con.comp <- list()
+con.comp$lcs_soft <- array(NA, c(folds, nClusts))
+con.comp$om_trate_soft <- array(NA, c(folds, nClusts))
+con.comp$om_slog_soft <- array(NA, c(folds, nClusts))
+
 
 cv_comp <- list()
 cv_comp$mse <- replicate(nCVs, comp, simplify = FALSE)
 cv_comp$cov <- replicate(nCVs, comp, simplify = FALSE)
 cv_comp$mpiw <- replicate(nCVs, comp, simplify = FALSE)
+cv_comp$convergence <- replicate(nCVs, con.comp, simplify = FALSE)
 
 task_vec <- data.frame(cv_index = 1:nCVs)
 
@@ -60,65 +78,64 @@ results <- foreach(m = 1:nrow(task_vec), .packages = c("tidyverse", "cluster", "
   
   cv_index <- task_vec$cv_index[m]
 
-  # Data Load in 
+  # Data Preparation 
   data(mvad)
-  mvad.labels <- c("employment", "further education", "higher education",
-                  "joblessness", "school", "training")
-  mvad.scodes <- c("EM","FE","HE","JL","SC","TR")
-
-  # seqdef - creates a state sequence object (formulates sequences into labels)
-  mvad.seq <- seqdef(mvad, 15:50, states=mvad.scodes, labels=mvad.labels)
-
-  # Creates distance matrix 
-  dists <- create_dists(data.seq=mvad.seq)
-
-  # Training set up 
-  folds <-  5
-  nrecs <- nrow(mvad[1])
-
-  # Set up training and test split so it is the same across the competition 
-  idx.orig <- rep(1:folds,each=floor(nrecs/folds))
-  if (nrecs %% folds != 0) idx.orig <- c(idx.orig,1:(nrecs %% folds))
-  idx <- sample(idx.orig) #shuffle
-
-  # Creates a random shuffle of the indices to be used in the the train-test split and folds. 
-  shuffle_index <- sample(1:nrecs, nrecs)
-  ids <- sort(unique(mvad$id))
-
-  # set up data for predictions 
   mvad_last_year <- mvad[,75:86]
   num_month_em_last_year <- apply(mvad_last_year, 1, function(x) length(which(x=="employment")))
   mvad_covars <- mvad[3:14] %>% dplyr::select(-Western) #reference group
 
+  # Create distance matrices 
+  mvad.seq <- create_seq_data(mvad)
+  dists <- create_dists(mvad.seq)
 
-  nWindows <- 16 
-  nClusts <- 25
-  nSoftClusts <- 13
-  nHarms <- 25
-  nCovars <- ncol(mvad_covars)
-  nSeqPcs <- 12
-  fuzz_soft <- 1.5
+  # Set up training and test split so it is the same across the cross validation
+  nrecs <- nrow(mvad[1])
+  idx.orig <- rep(1:folds,each=floor(nrecs/folds))
+  if (nrecs %% folds != 0) idx.orig <- c(idx.orig,1:(nrecs %% folds))
+  idx <- sample(idx.orig) #shuffle
 
 
   # Arrays for holding outcomes fits 
   # soft clusters - 2 (because we never look at index=1 clusters and indexing is always from 1)
   mpiw.cv.harm_rf <- cov.cv.harm_rf <- mse.cv.harm_rf <- array(NA,c(folds,nHarms, nCovars + nHarms - 1 ))
   mpiw.cv.windows_rf <- cov.cv.windows_rf <- mse.cv.windows_rf <- array(NA,c(folds,nWindows, nCovars + nWindows - 1))
-  mpiw.cv.om_trate_hard_rf <- cov.cv.om_trate_hard_rf <- mse.cv.om_trate_hard_rf <- array(NA,c(folds,nClusts, nCovars + nClusts - 2))
-  mpiw.cv.om_trate_soft_rf <- cov.cv.om_trate_soft_rf <- mse.cv.om_trate_soft_rf <- array(NA,c(folds,nSoftClusts,nCovars + nSoftClusts - 2))
-  mpiw.cv.om_slog_hard_rf <- cov.cv.om_slog_hard_rf <- mse.cv.om_slog_hard_rf <- array(NA,c(folds,nClusts, nCovars + nClusts - 2))
-  mpiw.cv.om_slog_soft_rf <- cov.cv.om_slog_soft_rf <- mse.cv.om_slog_soft_rf <- array(NA,c(folds,nSoftClusts, nCovars + nSoftClusts - 2))
-  mpiw.cv.lcs_hard_rf <- cov.cv.lcs_hard_rf <- mse.cv.lcs_hard_rf <- array(NA,c(folds,nClusts, nCovars + nClusts - 2))
-  mpiw.cv.lcs_soft_rf <- cov.cv.lcs_soft_rf <- mse.cv.lcs_soft_rf <- array(NA,c(folds,nSoftClusts, nCovars + nSoftClusts - 2))
-  mpiw.cv.rmets_rf <- cov.cv.rmets_rf  <- mse.cv.rmets_rf <- array(NA,c(folds, nSeqPcs, nCovars + nSeqPcs - 1))
+  mpiw.cv.om_trate_hard_rf <- cov.cv.om_trate_hard_rf <- mse.cv.om_trate_hard_rf <- array(NA,c(folds,nClusts, nCovars))
+  mpiw.cv.om_trate_soft_rf <- cov.cv.om_trate_soft_rf <- mse.cv.om_trate_soft_rf <- array(NA,c(folds,nClusts,nCovars + nClusts - 2))
+  mpiw.cv.om_slog_hard_rf <- cov.cv.om_slog_hard_rf <- mse.cv.om_slog_hard_rf <- array(NA,c(folds,nClusts, nCovars))
+  mpiw.cv.om_slog_soft_rf <- cov.cv.om_slog_soft_rf <- mse.cv.om_slog_soft_rf <- array(NA,c(folds,nClusts, nCovars + nClusts - 2))
+  mpiw.cv.lcs_hard_rf <- cov.cv.lcs_hard_rf <- mse.cv.lcs_hard_rf <- array(NA,c(folds,nClusts, nCovars))
+  mpiw.cv.lcs_soft_rf <- cov.cv.lcs_soft_rf <- mse.cv.lcs_soft_rf <- array(NA,c(folds,nClusts, nCovars + nClusts - 2))
   mpiw.cv.demos <- cov.cv.demos  <- mse.cv.demos <- array(NA,c(folds, nCovars - 1))
 
 
-  ### Cross Validation for Clustering Methods with OM-Transition Rate 
+  # For adding in Sequence Metric Principal Components
+  mpiw.cv.om_slog_hard_rf_3pc <- cov.cv.om_slog_hard_rf_3pc <- mse.cv.om_slog_hard_rf_3pc  <- array(NA,c(folds,nClusts, nCovars + 3)) 
+  mpiw.cv.lcs_soft_rf_3pc  <- cov.cv.lcs_soft_rf_3pc  <- mse.cv.lcs_soft_rf_3pc <- array(NA,c(folds, nClusts, nCovars + nClusts + 3 - 2))
+  mpiw.cv.om_trate_soft_rf_3pc  <- cov.cv.om_trate_soft_rf_3pc  <- mse.cv.om_trate_soft_rf_3pc <- array(NA,c(folds, nClusts, nCovars + nClusts + 3 - 2))
+  mpiw.cv.om_slog_soft_rf_3pc  <- cov.cv.om_slog_soft_rf_3pc  <- mse.cv.om_slog_soft_rf_3pc <- array(NA,c(folds, nClusts, nCovars + nClusts + 3 - 2))
+  mpiw.cv.harm_rf_3pc <- cov.cv.harm_rf_3pc <- mse.cv.harm_rf_3pc <- array(NA,c(folds,nHarms, nCovars + nHarms + 3 - 1 ))
+  mpiw.cv.windows_rf_3pc <- cov.cv.windows_rf_3pc <- mse.cv.windows_rf_3pc <- array(NA,c(folds,nWindows, nCovars + nWindows + 3 - 1))
+
+
+  # for tracking convergence / condition number (do not need the mtry dimension)
+  con.cv.lcs_soft <- con.cv.om_trate_soft <- con.cv.om_slog_soft <- array(NA, c(folds, nClusts))
+
+  # Data readying 
+  rmetrics <- create_rmetrics(mvad.seq=mvad.seq)
+  mvad_long <- create_long_data(mvad)
+  basis <- create.bspline.basis(c(0, 35), nbasis = 6, norder = 4)
+  year_state_counts <- create_year_state_counts(mvad)
+
+  ### Demos
   for (i in 1:folds) {
     cat("Fold Number ",i,"\n")
     test_idx <- idx == i
     train_idx <- !test_idx
+
+    # Make principal components from sequence metrics pcs 
+    seqmets_pcs <- create_seqmets_pcs(rmetrics, train_idx, test_idx, nSeqMetsPCs)
+    train_seq_scores <- seqmets_pcs$train_pcs
+    test_seq_scores <- seqmets_pcs$test_pcs
     
     # data frame of mvad demos split into training and testing 
     demos_data <- mvad_covars |> mutate(y = num_month_em_last_year)
@@ -132,189 +149,69 @@ results <- foreach(m = 1:nrow(task_vec), .packages = c("tidyverse", "cluster", "
       cov.cv.demos[i, j] <- demos_output$coverage
       mpiw.cv.demos[i, j] <- demos_output$mpiw
     }
-  }
-
-
-  ### CFDA Cross Validation 
-
-  M <- 36-1 #number of initial months-1
-
-  mvad_wide <- mvad[,c(1,15:(15+M))] # Goes only to June 96 
-  colnames(mvad_wide) <- c("id", as.character(0:M))
-
-  # have time and id combinations (so basically only one state column)
-  mvad_long <- gather(mvad_wide, key = time, value = state, "0":as.character(M))
-  mvad_long$time <- as.numeric(mvad_long$time)
-  mvad_long <- mvad_long %>% mutate(state=as.factor(state))
-  summary_cfd(mvad_long)
-
-  # first element is the range overwhich the functions can be evaluated 
-  # nbasis - number of basis functions (here this is 6 because we have 6 states)
-  # norder - the order of their degree (here cubic - why cubic?)
-  basis <- create.bspline.basis(c(0, M), nbasis = 6, norder = 4)
-
-  mvad_long0 <- mvad_long
-  ids <- sort(unique(mvad_long$id))
-
-
-  for (i in 1:folds) {  
-    cat("Fold Number ",i,"\n")
-
-    # pull data
-    test_idx <- idx == i  
-    train_idx <- !test_idx
-    mvad_long_train <- mvad_long %>% filter(id %in% ids[train_idx])
-    mvad_long_test <- mvad_long %>% filter(id %in% ids[test_idx])
-    
-    # compute encodings for - get warning messages that at least one states not in support of 
-    # one basis function (I assume this is because of HE in the earlier years)
-    fmca.train <- compute_optimal_encoding(mvad_long_train, basis, nCores = 7,verbose=F)
-    pcs.train <- fmca.train$pc # we get 34 pcs (36 month of "variables")
-    nComps <- ncol(pcs.train) 
-    
-    colnames(pcs.train) <- paste0("PC",1:nComps)
-    pcs.test <- predict(fmca.train,newdata=mvad_long_test,method="parallel",nCores=7)
-    colnames(pcs.test) <- paste0("PC",1:nComps)
+  
+    # CFDA 
+    harm_data <- create_cfda_harms(mvad_long, train_idx, test_idx, basis=basis)
+    train_harm <- harm_data$train_data
+    test_harm <- harm_data$test_data
 
     for (j in 1:nHarms) {
-      for (k in 1:(nCovars + j - 1)) {
-          # create training set based on number of PCs to include
-        train_harm <- mvad_covars[train_idx, ] %>% 
-          add_column(as_tibble(pcs.train[, 1:j, drop = FALSE])) %>% 
-          mutate(y = num_month_em_last_year[train_idx])
-        test_harm <- mvad_covars[test_idx, ] %>% 
-          add_column(as_tibble(pcs.test[, 1:j, drop = FALSE])) %>% 
-          mutate(y = num_month_em_last_year[test_idx])
 
-        harm_fit <- fit_rf(train_harm, test_harm, mtry = k)
+      train_j_harm <- train_harm[, 1:c(12+j)]
+      test_j_harm <- test_harm[, 1:c(12+j)]
+      
+
+      for (k in 1:(nCovars + j - 1)) {
+
+        harm_fit <- fit_rf(train_j_harm,test_j_harm, mtry = k)
         mse.cv.harm_rf[i, j, k] <- harm_fit$mse
         cov.cv.harm_rf[i, j, k] <- harm_fit$coverage
         mpiw.cv.harm_rf[i, j, k] <- harm_fit$mpiw
 
+        # Adding in Sequence Metrics 
+        harm_fit_seq <- fit_rf(cbind(train_j_harm, train_seq_scores),cbind(test_j_harm, test_seq_scores), mtry = k)
+        mse.cv.harm_rf_3pc[i, j, k] <- harm_fit_seq$mse
+        cov.cv.harm_rf_3pc[i, j, k] <- harm_fit_seq$coverage
+        mpiw.cv.harm_rf_3pc[i, j, k] <- harm_fit_seq$mpiw
 
         }
       }
-    }
 
-
-
-
-  ### Windows 
-  mvad_states <- mvad[,c(1,15:50)]
-
-  # column names for the three years 
-  y1 <- colnames(mvad_states)[2:13]
-  y2 <- colnames(mvad_states)[14:25]
-  y3 <- colnames(mvad_states)[26:37]
-
-  # makes year and id combinations with counts for each state
-  id_year <- mvad_states %>% pivot_longer(cols=colnames(mvad_states[2:37]), names_to="output") %>% 
-      mutate(year = case_when(output %in% y1 ~ 1, output %in% y2 ~ 2, TRUE ~ 3)) %>% count(id, year, value)
-
-  # make full table with 16 columns (one for each year/id combo) + 1 for id.
-  mvad_states_wide <- id_year %>% 
-    pivot_wider(id_cols=c(id), 
-                names_from=c(value,year), values_from=n, values_fill = 0) %>% dplyr::select(-id)
-
-  mvad_windows <- cbind(mvad_covars, mvad_states_wide)
-
-  for (i in 1:folds) {
-
-    cat("Fold Number ",i,"\n")
-    test_idx <- idx == i  
-    train_idx <- !test_idx
-
-    # pull out training and testing for only the windows
-    train_windows <- mvad_windows[12:27][train_idx, ]
-    test_windows <- mvad_windows[12:27][test_idx, ]
-    
-    pca_windows_train <- prcomp(x=train_windows, center=TRUE, scale=TRUE)
-    train_scores <- pca_windows_train$x
-    test_scores <- predict(pca_windows_train, newdata = test_windows) 
-    
-    # add principal components to demographic data (no longer need original windows)
-    train_mvad_windows <- cbind(num_month_em_last_year[train_idx], mvad_windows[1:11][train_idx,], train_scores) 
-    test_mvad_windows <- cbind(num_month_em_last_year[test_idx], mvad_windows[1:11][test_idx,], test_scores)
-    
-    colnames(train_mvad_windows)[1] <- "y"
-    colnames(test_mvad_windows)[1] <- "y"
+    count_data <- create_counts_pcs(year_state_counts, mvad_covars, train_idx, test_idx, num_month_em_last_year)
+    train_count_data <- count_data$train_data
+    test_count_data <- count_data$test_data
     
     for (j in 1:nWindows) {
+      train_j_wind <- train_count_data[,1:(12+j)]
+      test_j_wind <- test_count_data[,1:(12+j)]
+
       for (k in 1:(nCovars + j - 1)) {
         wind_fit <- fit_rf(
-          train_data=train_mvad_windows[,1:(11+j)], test_data = test_mvad_windows, mtry=k)
+          train_data=train_j_wind, test_data = test_j_wind, mtry=k)
         mse.cv.windows_rf[i,j,k] <- wind_fit$mse
         cov.cv.windows_rf[i, j, k] <- wind_fit$coverage
         mpiw.cv.windows_rf[i, j, k] <- wind_fit$mpiw
+        
+        # Add in Sequence Metrics 
+        wind_fit_seq <- fit_rf(
+          train_data=cbind(train_j_wind, train_seq_scores), test_data = cbind(test_j_wind, test_seq_scores), mtry=k)
+        mse.cv.windows_rf_3pc[i,j,k] <- wind_fit_seq$mse
+        cov.cv.windows_rf_3pc[i, j, k] <- wind_fit_seq$coverage
+        mpiw.cv.windows_rf_3pc[i, j, k] <- wind_fit_seq$mpiw
+
       }
     }
-  }
 
-
-
-  ## OM-TRATE
-  # go through folds in repeat
-  for (i in 1:folds) {
-    cat("Fold Number ",i,"\n")
-    test_idx <- idx == i
-    train_idx <- !test_idx
-
-    # create a agnes tree for the clusters, based on the 1st similarity matrix - HARD CODED FOR OM
-    clusterward_hard <- agnes(dists[[1]][train_idx,train_idx], diss=TRUE, method="ward")
-
-    # hard coded for OM-Trate
-    for (j in 2:nClusts) {
-      print(j)
-      # Create hard clusters
-      hard_cluster_data <- hard_cluster_onehot(
-        clusterward = clusterward_hard, nClusts=j, covars=mvad_covars, 
-        y = num_month_em_last_year, train_idx=train_idx, 
-        test_idx=test_idx, dist_matrix = dists[[1]])
-
-      train_om_hard <- hard_cluster_data$train_data
-      test_om_hard <- hard_cluster_data$test_data
-    
-      # Create soft clusters
-      soft_cluster_data <- soft_cluster(dist_matrix = dists[[1]], train_idx=train_idx, test_idx=test_idx, nClusts=j, covars=mvad_covars, y = num_month_em_last_year)
-
-      train_om_soft <- soft_cluster_data$train_data
-      test_om_soft <- soft_cluster_data$test_data
-
-      # have to minus 2 because of indexing j from 2 (instead of 1 - can't look at 1 soft cluster)
-      for (k in 1:(nCovars + j - 2)) {
-        hard_om_fit <- fit_rf(train_data=train_om_hard, test_data=test_om_hard, mtry=k)
-        mse.cv.om_trate_hard_rf[i,j,k] <- hard_om_fit$mse
-        cov.cv.om_trate_hard_rf[i, j, k] <- hard_om_fit$coverage
-        mpiw.cv.om_trate_hard_rf[i, j, k] <- hard_om_fit$mpiw
-
-        # k is only evaluated for this j if the number of soft clusters is reached
-        if (j < nSoftClusts && soft_cluster_data$converged) {
-          soft_om_fit <- fit_rf(train_data=train_om_soft, test_data=test_om_soft, mtry=k)
-          mse.cv.om_trate_soft_rf[i,j,k] <- soft_om_fit$mse
-          cov.cv.om_trate_soft_rf[i, j, k] <- soft_om_fit$coverage
-          mpiw.cv.om_trate_soft_rf[i, j, k] <- soft_om_fit$mpiw
-
-        }
-      }
-    }
-  }
-
-
-  # OM - SLOG 
-  # go through folds in repeat
-  for (i in 1:folds) {
-    cat("Fold Number ",i,"\n")
-    test_idx <- idx == i
-    train_idx <- !test_idx
 
     # create a agnes tree for the clusters, based on the 1st similarity matrix - HARD CODED FOR OM
     clusterward_hard <- agnes(dists[[3]][train_idx,train_idx], diss=TRUE, method="ward")
 
+
     # hard coded for OM-Trate
     for (j in 2:nClusts) {
-      
-      # Create hard clusters
-      hard_cluster_data <- hard_cluster_onehot(
+
+      # OM INDEL SLOG
+      hard_cluster_data <- hard_cluster(
         clusterward = clusterward_hard, nClusts=j, covars=mvad_covars, 
         y = num_month_em_last_year, train_idx=train_idx, 
         test_idx=test_idx, dist_matrix = dists[[3]])
@@ -322,147 +219,62 @@ results <- foreach(m = 1:nrow(task_vec), .packages = c("tidyverse", "cluster", "
       train_om_hard <- hard_cluster_data$train_data
       test_om_hard <- hard_cluster_data$test_data
     
-      # Create soft clusters
-      soft_cluster_data <- soft_cluster(dist_matrix = dists[[3]], 
-        train_idx=train_idx, test_idx=test_idx, nClusts=j, covars=mvad_covars, 
-        y = num_month_em_last_year)
+      # OM-Slog
+      soft_cluster_data_om_slog <- soft_cluster(dist_matrix = dists[[3]], train_idx=train_idx, test_idx=test_idx, nClusts=j, 
+        covars=mvad_covars, y = num_month_em_last_year, max_iters = max_soft_iters, fuzziness = fuzz_soft, 
+         knn_soft_assign=knn_soft_assign, tol=tolerance)
+      con.cv.om_slog_soft[i,j] <- soft_cluster_data_om_slog$converged
 
-      train_om_soft <- soft_cluster_data$train_data
-      test_om_soft <- soft_cluster_data$test_data
+      train_om_slog_soft <- soft_cluster_data_om_slog$train_data
+      test_om_slog_soft <- soft_cluster_data_om_slog$test_data
+
+      
+      # metrics data 
+      train_om_hard_3pc <- cbind(train_om_hard, train_seq_scores)
+      test_om_hard_3pc <- cbind(test_om_hard, test_seq_scores)
+
+      train_om_slog_soft_3pc <- cbind(train_om_slog_soft, train_seq_scores)
+      test_om_slog_soft_3pc <- cbind(test_om_slog_soft, test_seq_scores)
+      
 
       for (k in 1:(nCovars + j - 2)) {
-        hard_slog_fit <- fit_rf(train_data=train_om_hard, test_data=test_om_hard, mtry=k)
-        mse.cv.om_slog_hard_rf[i,j,k] <- hard_slog_fit$mse
-        cov.cv.om_slog_hard_rf[i, j, k] <- hard_slog_fit$coverage
-        mpiw.cv.om_slog_hard_rf[i, j, k] <- hard_slog_fit$mpiw
+
+        if (k < (nCovars + 1)) {
+          hard_slog_fit <- fit_rf(train_data=train_om_hard, test_data=test_om_hard, mtry=k)
+          mse.cv.om_slog_hard_rf[i,j,k] <- hard_slog_fit$mse
+          cov.cv.om_slog_hard_rf[i, j, k] <- hard_slog_fit$coverage
+          mpiw.cv.om_slog_hard_rf[i, j, k] <- hard_slog_fit$mpiw
         
-        # make sure we don't look at 25 columns (but we still want to look at mtry up to the number of soft clusters)
-        # because it has multiple columns (one for each cluster)
-        if (j < nSoftClusts && soft_cluster_data$converged) {
-          soft_slog_fit <- fit_rf(train_data=train_om_soft, test_data=test_om_soft, mtry=k)
-          mse.cv.om_slog_soft_rf[i,j,k] <- soft_slog_fit$mse
-          cov.cv.om_slog_soft_rf[i, j, k] <- soft_slog_fit$coverage
-          mpiw.cv.om_slog_soft_rf[i, j, k] <- soft_slog_fit$mpiw
+          hard_slog_3pc_fit <- fit_rf(train_data=train_om_hard_3pc, test_data=test_om_hard_3pc, mtry=k)
+          mse.cv.om_slog_hard_rf_3pc[i,j,k] <- hard_slog_3pc_fit$mse
+          cov.cv.om_slog_hard_rf_3pc[i,j,k] <- hard_slog_3pc_fit$coverage
+          mpiw.cv.om_slog_hard_rf_3pc[i,j,k] <- hard_slog_3pc_fit$mpiw
+
         }
-      }
-    }
-  }
 
 
+        # OM-Slog
+        if (soft_cluster_data_om_slog$converged) {
+          soft_om_slog_fit <- fit_rf(train_data=train_om_slog_soft, test_data=test_om_slog_soft, mtry=k)
+          mse.cv.om_slog_soft_rf[i,j,k] <- soft_om_slog_fit$mse
+          cov.cv.om_slog_soft_rf[i, j, k] <- soft_om_slog_fit$coverage
+          mpiw.cv.om_slog_soft_rf[i, j, k] <- soft_om_slog_fit$mpiw
 
-  # LCS
+          soft_om_slog_fit_3pc <- fit_rf(train_data=train_om_slog_soft_3pc, test_data=test_om_slog_soft_3pc, mtry=k)
+          mse.cv.om_slog_soft_rf_3pc[i,j,k] <- soft_om_slog_fit_3pc$mse
+          cov.cv.om_slog_soft_rf_3pc[i,j,k] <- soft_om_slog_fit_3pc$coverage
+          mpiw.cv.om_slog_soft_rf_3pc[i,j,k] <- soft_om_slog_fit_3pc$mpiw
 
-  # go through folds in repeat
-  for (i in 1:folds) {
-    cat("Fold Number ",i,"\n")
-    test_idx <- idx == i
-    train_idx <- !test_idx
-
-    # create a agnes tree for the clusters, based on the 1st similarity matrix - HARD CODED FOR OM
-    clusterward_hard <- agnes(dists[[2]][train_idx,train_idx], diss=TRUE, method="ward")
-
-    for (j in 2:nClusts) {
-      
-      cluster_data <- hard_cluster_onehot(clusterward = clusterward_hard, nClusts = j, covars=mvad_covars, y = num_month_em_last_year, train_idx = train_idx, test_idx = test_idx, dist_matrix = dists[[2]])
-      
-      train_lcs_hard <- cluster_data$train_data
-      test_lcs_hard <- cluster_data$test_data
-
-      soft_cluster_data <- soft_cluster(dist_matrix = dists[[2]], train_idx=train_idx, test_idx=test_idx, nClusts=j, covars=mvad_covars, y = num_month_em_last_year)
-
-      train_lcs_soft <- soft_cluster_data$train_data
-      test_lcs_soft <- soft_cluster_data$test_data
-      
-      for (k in 1:(nCovars + j - 2)) {
-
-        hard_lcs_fit <- fit_rf(train_data=train_lcs_hard, test_data=test_lcs_hard, mtry=k)
-        mse.cv.lcs_hard_rf[i,j,k] <- hard_lcs_fit$mse
-        cov.cv.lcs_hard_rf[i, j, k] <- hard_lcs_fit$coverage
-        mpiw.cv.lcs_hard_rf[i, j, k] <- hard_lcs_fit$mpiw
-
-        if (j < nSoftClusts && soft_cluster_data$converged) {
-          soft_lcs_fit <- fit_rf(train_data=train_lcs_soft, test_data=test_lcs_soft, mtry=k)
-          mse.cv.lcs_soft_rf[i,j,k] <- soft_lcs_fit$mse
-          cov.cv.lcs_soft_rf[i, j, k] <- soft_lcs_fit$coverage
-          mpiw.cv.lcs_soft_rf[i, j, k] <- soft_lcs_fit$mpiw
         }
+
       }
     }
   }
 
 
-    # Sequence Metrics: 
-
-  mvad_states <- mvad[,15:50]
-
-  # encodings for the statebadness 
-  st_alphabet <- alphabet(mvad.seq) 
-  # Example: If alphabet is "A", "B", "C"
-  st_prec_values <- c(1, -1, -1, 2, -1, -1) # A=1 (low badness), C=3 (high badness)
-  names(st_prec_values) <- st_alphabet
-
-  mvad_rmetrics <- mvad_states %>% mutate(
-    spells=seqindic(mvad.seq, "dlgth")$Dlgth, 
-    visited_states=seqindic(mvad.seq, "visited")$Visited, 
-    num_of_trans = seqindic(mvad.seq,"trans")$Trans, 
-    mean_spell_dur = seqindic(mvad.seq,"meand")$MeanD, 
-    # pedantic - this one pulled out a "seqivardur" "numeric" datatype (not sure 
-    # how it did both, so I have to force it to be numeric)
-    sd_spell_dur = as.numeric(seqindic(mvad.seq,"dustd")$Dustd), 
-    # Diversity I
-    entropy = seqindic(mvad.seq,"entr")$Entr, 
-    # more interested in states than spells (see paper)
-    dss_subs = seqindic(mvad.seq,"nsubs")$Nsubs, 
-    complexity = seqindic(mvad.seq,"cplx")$Cplx, 
-    # could look at other turbulence measures 
-    turbulence = seqindic(mvad.seq,"turb")$Turb, 
-    badness = seqibad(seqdata = mvad.seq,stprec = st_prec_values), 
-    degradation = seqidegrad(seqdata = mvad.seq, stprec = st_prec_values), 
-    insecurity = seqinsecurity(seqdata = mvad.seq, stprec = st_prec_values))
-
-
-  # Training set up 
-  rmetrics <- mvad_rmetrics[,37:48] 
-  #nSeqPcs <- ncol(rmetrics)
-
-  # go through folds in repeat
-  for (i in 1:folds) {
-    cat("Fold Number ",i,"\n")
-    test_idx <- idx == i
-    train_idx <- !test_idx
-    
-    train_seqmets <- rmetrics[train_idx, ]
-    test_seqmets <- rmetrics[test_idx, ]
-    
-    pca_comps_train <- prcomp(x=train_seqmets, center=TRUE, scale=TRUE)
-    
-    train_scores <- pca_comps_train$x
-    test_scores <- predict(pca_comps_train, newdata = test_seqmets) 
-    
-    for (j in 1:nSeqPcs) {
-
-      train_rmets <- cbind(num_month_em_last_year[train_idx], mvad_covars[train_idx,], train_scores[,1:j,drop = FALSE])
-      test_rmets <- cbind(num_month_em_last_year[test_idx], mvad_covars[test_idx,], test_scores[,1:j,drop = FALSE])
-
-      colnames(train_rmets)[1] <- "y"
-      colnames(test_rmets)[1] <- "y"
-      
-      for (k in 1:(nCovars + j - 1)) {
-        mets_fit <- fit_rf(train_data=train_rmets, test_data=test_rmets, mtry=k)
-        mse.cv.rmets_rf[i,j,k] <- mets_fit$mse
-        cov.cv.rmets_rf[i, j, k] <- mets_fit$coverage
-        mpiw.cv.rmets_rf[i, j, k] <- mets_fit$mpiw
-      }
-    }
-  }
-
-
-
-  
-    
 
   mse.comp <- list()
-  mse.comp$om_trate_hard <-mse.cv.om_trate_hard_rf  
+  mse.comp$om_trate_hard <- mse.cv.om_trate_hard_rf  
   mse.comp$om_trate_soft <- mse.cv.om_trate_soft_rf 
   mse.comp$om_slog_hard  <- mse.cv.om_slog_hard_rf 
   mse.comp$om_slog_soft  <- mse.cv.om_slog_soft_rf 
@@ -471,8 +283,12 @@ results <- foreach(m = 1:nrow(task_vec), .packages = c("tidyverse", "cluster", "
   mse.comp$windows <- mse.cv.windows_rf 
   mse.comp$harm <- mse.cv.harm_rf 
   mse.comp$demos <- mse.cv.demos
-  mse.comp$mets <- mse.cv.rmets_rf
-
+  mse.comp$om_trate_soft_3pc <-  mse.cv.om_trate_soft_rf_3pc 
+  mse.comp$om_slog_soft_3pc <-  mse.cv.om_slog_soft_rf_3pc 
+  mse.comp$lcs_soft_3pc <-  mse.cv.lcs_soft_rf_3pc 
+  mse.comp$om_slog_hard_3pc <- mse.cv.om_slog_hard_rf_3pc 
+  mse.comp$windows_3pc <- mse.cv.windows_rf_3pc
+  mse.comp$harm_3pc <- mse.cv.harm_rf_3pc
   
   cov.comp <- list()
   cov.comp$om_trate_hard <- cov.cv.om_trate_hard_rf 
@@ -484,8 +300,13 @@ results <- foreach(m = 1:nrow(task_vec), .packages = c("tidyverse", "cluster", "
   cov.comp$windows <- cov.cv.windows_rf 
   cov.comp$harm <- cov.cv.harm_rf
   cov.comp$demos <- cov.cv.demos
-  cov.comp$mets <- cov.cv.rmets_rf
-
+  cov.comp$om_trate_soft_3pc <-  cov.cv.om_trate_soft_rf_3pc 
+  cov.comp$om_slog_soft_3pc <-  cov.cv.om_slog_soft_rf_3pc 
+  cov.comp$lcs_soft_3pc <-  cov.cv.lcs_soft_rf_3pc 
+  cov.comp$om_slog_hard_3pc <- cov.cv.om_slog_hard_rf_3pc 
+  cov.comp$windows_3pc <- cov.cv.windows_rf_3pc
+  cov.comp$harm_3pc <- cov.cv.harm_rf_3pc
+      
   mpiw.comp <- list()
   mpiw.comp$om_trate_hard <-  mpiw.cv.om_trate_hard_rf 
   mpiw.comp$om_trate_soft <-  mpiw.cv.om_trate_soft_rf 
@@ -496,9 +317,19 @@ results <- foreach(m = 1:nrow(task_vec), .packages = c("tidyverse", "cluster", "
   mpiw.comp$windows <- mpiw.cv.windows_rf 
   mpiw.comp$harm <-  mpiw.cv.harm_rf 
   mpiw.comp$demos <- mpiw.cv.demos
-  mpiw.comp$mets <- mpiw.cv.rmets_rf
+  mpiw.comp$om_trate_soft_3pc <- mpiw.cv.om_trate_soft_rf_3pc 
+  mpiw.comp$om_slog_soft_3pc <- mpiw.cv.om_slog_soft_rf_3pc 
+  mpiw.comp$lcs_soft_3pc <- mpiw.cv.lcs_soft_rf_3pc 
+  mpiw.comp$om_slog_hard_3pc <- mpiw.cv.om_slog_hard_rf_3pc  
+  mpiw.comp$windows_3pc <- mpiw.cv.windows_rf_3pc
+  mpiw.comp$harm_3pc <- mpiw.cv.harm_rf_3pc
 
-  list(mpiw.comp=mpiw.comp, cov.comp=cov.comp, mse.comp=mse.comp, cv_index=cv_index)
+  con.comp <- list()
+  con.comp$lcs_soft <- con.cv.lcs_soft
+  con.comp$om_trate_soft <- con.cv.om_trate_soft
+  con.comp$om_slog_soft <- con.cv.om_slog_soft
+
+  list(mpiw.comp=mpiw.comp, cov.comp=cov.comp, mse.comp=mse.comp, con.comp=con.comp, cv_index=cv_index)
     
 }
 
@@ -507,10 +338,12 @@ for(result in results) {
   cv_comp$mse[[n]] <- result$mse.comp
   cv_comp$cov[[n]] <- result$cov.comp
   cv_comp$mpiw[[n]] <- result$mpiw.comp
+  cv_comp$convergence[[n]] <- result$con.comp
 }
 
 
-saveRDS(cv_comp, file="CV_NonLinearComp.rds")
+
+saveRDS(cv_comp, file="CV_NonLinearComp_Factor_w3pc_r_checks_more_soft.rds")
 
   
 # Stop the cluster
