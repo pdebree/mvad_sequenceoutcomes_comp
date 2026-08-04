@@ -8,6 +8,7 @@ library(cfda)
 library(foreach)
 library(doParallel)
 
+source("seqout_utils.R")
 
 # Detect cores allocated by Slurm
 n_cores <- as.integer(Sys.getenv("SLURM_CPUS_PER_TASK"))
@@ -16,7 +17,6 @@ cl <- makeCluster(n_cores)
 registerDoParallel(cl)
 
 
-source("seqout_utils.R")
 
 
 # Make the ordering of the methods strictly as follows: 
@@ -33,7 +33,10 @@ nMethods <- 8
 nComps <- 6
 nSoft <- 4
 nSets <- 150
-fuzz_soft <- 1.25
+fuzz_soft <- 1.75
+max_soft_iters <- 2000
+tolerance <- 1e-10
+knn_soft_assign <- 15
 
 folds <- 10
 cv_idx <- rep(1:folds,each=floor(900/folds))
@@ -99,7 +102,7 @@ best_n_comps$semi_concord <- array(NA, c(nMethods, nSets))
 best_n_comps$semi <- array(NA, c(nMethods, nSets))
 
 set_conv_train_track <- list()
-set_conv_train_track$om_trate <- set_conv_train_track$om_slog <- set_conv_train_track$lcs <- array(FALSE, c(folds, nSoft))
+set_conv_train_track$om_trate <- set_conv_train_track$om_slog <- set_conv_train_track$lcs <- array(FALSE, c(folds, nSoft, 2))
 
 train_conv_tracker <- list()
 train_conv_tracker$concord <- replicate(nSets, set_conv_train_track, simplify = FALSE)
@@ -110,7 +113,7 @@ train_conv_tracker$semi <- replicate(nSets, set_conv_train_track, simplify = FAL
 
 
 set_conv_test_track <- list()
-set_conv_test_track$om_trate <- set_conv_test_track$om_slog <- set_conv_test_track$lcs <- array(NA)
+set_conv_test_track$om_trate <- set_conv_test_track$om_slog <- set_conv_test_track$lcs <- array(NA, 2)
 
 test_conv_tracker <- list()
 test_conv_tracker$concord <- replicate(nSets, set_conv_test_track, simplify = FALSE)
@@ -181,7 +184,7 @@ results <- foreach(m = 1:nrow(task_grid), .packages = c("tidyverse", "cluster", 
   
   # soft clustering convergence tracking 
   set_conv_train_track <- list()
-  set_conv_train_track$om_trate <- set_conv_train_track$om_slog <- set_conv_train_track$lcs <- array(FALSE, c(folds, nSoft))
+  set_conv_train_track$om_trate <- set_conv_train_track$om_slog <- set_conv_train_track$lcs <- array(FALSE, c(folds, nSoft, 2))
 
   # initialize basis functions - can do this generally
   basis <- create.bspline.basis(c(1, 12), nbasis = 3, norder = 3)
@@ -242,14 +245,14 @@ results <- foreach(m = 1:nrow(task_grid), .packages = c("tidyverse", "cluster", 
         if (j > 1) {
           # ***************
           # hard clustering. 
-          om_trate_clusters <- hard_cluster_sim(clusterward_trate_hard, j, set_train_data[["y"]], 
-            cv_train_idx, cv_test_idx, dist_matrix = dists[[1]][set_train_idx, set_train_idx])
+          om_trate_clusters <- hard_cluster(clusterward = clusterward_trate_hard, nClusts = j,  y = set_train_data[["y"]], 
+            train_idx = cv_train_idx, test_idx = cv_test_idx, dist_matrix = dists[[1]][set_train_idx, set_train_idx])
 
-          om_slog_clusters <- hard_cluster_sim(clusterward_slog_hard, j, set_train_data[["y"]], 
-            cv_train_idx, cv_test_idx, dist_matrix = dists[[3]][set_train_idx, set_train_idx])
+          om_slog_clusters <- hard_cluster(clusterward = clusterward_slog_hard, nClusts = j,  y = set_train_data[["y"]], 
+            train_idx = cv_train_idx, test_idx = cv_test_idx,dist_matrix = dists[[3]][set_train_idx, set_train_idx])
           
-          lcs_clusters <- hard_cluster_sim(clusterward_lcs_hard, j, set_train_data[["y"]], 
-            cv_train_idx, cv_test_idx, dist_matrix = dists[[2]][set_train_idx, set_train_idx])
+          lcs_clusters <- hard_cluster(clusterward = clusterward_lcs_hard, nClusts = j, y = set_train_data[["y"]], 
+            train_idx = cv_train_idx, test_idx = cv_test_idx, dist_matrix = dists[[2]][set_train_idx, set_train_idx])
 
 
           # hard is method "1" - fit model and calculate mse
@@ -267,41 +270,41 @@ results <- foreach(m = 1:nrow(task_grid), .packages = c("tidyverse", "cluster", 
         # soft clustering - we have to consider potential convergence problems
           if (j <= nSoft) {
             om_trate_soft_train <- soft_cluster_sim(dists[[1]][set_train_idx, set_train_idx],
-              cv_train_idx, cv_test_idx, nClusts=j, fuzziness = fuzz_soft, y=set_train_data[["y"]]
+              cv_train_idx, cv_test_idx, nClusts=j, fuzziness = fuzz_soft, y=set_train_data[["y"]], max_iters = max_soft_iters, 
+              knn_soft_assign=knn_soft_assign, tol=tolerance
             )
-            if (om_trate_soft_train$converged) {
+
+            set_conv_train_track[["om_trate"]][i,j,] <- c(om_trate_soft_train$converged[[1]], om_trate_soft_train$safe_condition_no)
+
+            if (om_trate_soft_train$converged && om_trate_soft_train$safe_condition_no) {
               # hard is method "2" - fit model and calculate mse 
               mse.cv[i, j, 6] <- fit_linear(om_trate_soft_train$train_data, om_trate_soft_train$test_data)$mse
-              set_conv_train_track[["om_trate"]][i,j] <- TRUE
-            } else {
-              mse.cv[i, j, 6] <- NA
-            }
+            } 
 
             om_slog_soft_train <- soft_cluster_sim(dists[[3]][set_train_idx, set_train_idx],
-              cv_train_idx, cv_test_idx, nClusts=j, fuzziness = fuzz_soft, y=set_train_data[["y"]]
+              cv_train_idx, cv_test_idx, nClusts=j, fuzziness = fuzz_soft, y=set_train_data[["y"]], max_iters = max_soft_iters,
+              knn_soft_assign=knn_soft_assign, tol=tolerance
             )
 
-            if (om_slog_soft_train$converged) {
+            set_conv_train_track[["om_slog"]][i,j,] <- c(om_slog_soft_train$converged[[1]], om_slog_soft_train$condition_no)
+
+
+            if (om_slog_soft_train$converged && om_slog_soft_train$condition_no) {
               # hard is method "2" - fit model and calculate mse 
               mse.cv[i, j, 7] <- fit_linear(om_slog_soft_train$train_data, om_slog_soft_train$test_data)$mse
-              set_conv_train_track[["om_slog"]][i,j] <- TRUE
-
-            } else {
-              mse.cv[i, j, 7] <- NA
-            }
+            } 
 
             lcs_soft_train <- soft_cluster_sim(dists[[2]][set_train_idx, set_train_idx],
-              cv_train_idx, cv_test_idx, nClusts=j, fuzziness = fuzz_soft, y=set_train_data[["y"]]
+              cv_train_idx, cv_test_idx, nClusts=j, fuzziness = fuzz_soft, y=set_train_data[["y"]], max_iters = max_soft_iters, 
+              knn_soft_assign=knn_soft_assign, tol=tolerance
             )
 
-            if (lcs_soft_train$converged) {
+            set_conv_train_track[["lcs"]][i,j,] <- c(lcs_soft_train$converged[[1]], lcs_soft_train$condition_no)
+
+            if (lcs_soft_train$converged && lcs_soft_train$safe_condition_no) {
               # hard is method "2" - fit model and calculate mse 
               mse.cv[i, j, 8] <- fit_linear(lcs_soft_train$train_data, lcs_soft_train$test_data)$mse
-              set_conv_train_track[["lcs"]][i,j] <- TRUE
-
-            } else {
-              mse.cv[i, j, 8] <- NA
-            }
+            } 
           }
         } 
       
@@ -324,7 +327,6 @@ results <- foreach(m = 1:nrow(task_grid), .packages = c("tidyverse", "cluster", 
       }
   }
   
-  print("Folds Done")
 
   mse_cfda <- mse_wind <- mse_om_trate_hard <- NA
   mse_om_slog_hard <- mse_lcs_hard <- mse_om_trate_soft <- NA
@@ -349,9 +351,9 @@ results <- foreach(m = 1:nrow(task_grid), .packages = c("tidyverse", "cluster", 
   # If we get non-convergence (which corresponds to an NA value for that entry in 
   # mse.cv) we ignore it. We base this on the assumption that non-convergence is not happening
   # more than twice in a group of folds for a number of soft clusters
-  best_trate_soft_clusts <- which.min(apply(mse.cv[,,6], 2, mean, na.rm = TRUE))
-  best_slog_soft_clusts <- which.min(apply(mse.cv[,,7], 2, mean, na.rm = TRUE))
-  best_lcs_soft_clusts <- which.min(apply(mse.cv[,,8], 2, mean, na.rm = TRUE))
+  best_trate_soft_clusts <- safe_which_min(apply(mse.cv[,,6], 2, mean, na.rm = TRUE))
+  best_slog_soft_clusts <- safe_which_min(apply(mse.cv[,,7], 2, mean, na.rm = TRUE))
+  best_lcs_soft_clusts <- safe_which_min(apply(mse.cv[,,8], 2, mean, na.rm = TRUE))
   
   # Refitting models based on best training performance (number of components)
   y.train_set <- set_train_data[, "y"]
@@ -368,12 +370,12 @@ results <- foreach(m = 1:nrow(task_grid), .packages = c("tidyverse", "cluster", 
     diss=TRUE, method="ward")
 
   # Create clusterings based on best hard performance
-  om_trate_clusters_set <- hard_cluster_sim(clusterward_om_trate_hard_set,
-    best_trate_hard_clusts, data_wide[["y"]], set_train_idx, set_test_idx, dists[[1]])
-  om_slog_clusters_set <- hard_cluster_sim(clusterward_om_slog_hard_set,
-    best_slog_hard_clusts, data_wide[["y"]], set_train_idx, set_test_idx, dists[[3]])
-  lcs_clusters_set <- hard_cluster_sim(clusterward_lcs_hard_set,
-    best_lcs_hard_clusts, data_wide[["y"]], set_train_idx, set_test_idx, dists[[2]])
+  om_trate_clusters_set <- hard_cluster(clusterward = clusterward_om_trate_hard_set, 
+    nClusts = best_trate_hard_clusts,  y = data_wide[["y"]], train_idx = set_train_idx, test_idx = set_test_idx, dist_matrix = dists[[1]])
+  om_slog_clusters_set <- hard_cluster(clusterward = clusterward_om_slog_hard_set,
+    nClusts = best_slog_hard_clusts, y = data_wide[["y"]], train_idx = set_train_idx, test_idx = set_test_idx, dist_matrix = dists[[3]])
+  lcs_clusters_set <- hard_cluster(clusterward = clusterward_lcs_hard_set,
+    nClusts = best_lcs_hard_clusts, y = data_wide[["y"]], train_idx = set_train_idx, test_idx = set_test_idx, dist_matrix = dists[[2]])
 
   hard_trate_set_fit <- fit_linear(
     train_data=om_trate_clusters_set$train_data, 
@@ -397,52 +399,71 @@ results <- foreach(m = 1:nrow(task_grid), .packages = c("tidyverse", "cluster", 
   mpiw_lcs_hard <- hard_lcs_set_fit$mpiw
 
   
-
   # om trate soft 
   # if there is no training convergence, mse is NA 
-  if (!identical(best_trate_soft_clusts, integer(0))) {
+  if (!is.na(best_trate_soft_clusts)) {
     om_trate_soft_set <- soft_cluster_sim(dists[[1]],
-            set_train_idx, set_test_idx, nClusts=best_trate_soft_clusts, fuzziness = fuzz_soft, y=data_wide[["y"]])
-    if (om_trate_soft_set$converged) {
-      soft_trate_set_fit <- fit_linear(train_data=om_trate_soft_set$train, test_data=om_trate_soft_set$test_data)
+            set_train_idx, set_test_idx, nClusts=best_trate_soft_clusts, fuzziness = fuzz_soft, y=data_wide[["y"]], max_iters = max_soft_iters, 
+          knn_soft_assign=knn_soft_assign, tol=tolerance)
+    
+    om_trate_soft_conv <- c(TRUE, om_trate_soft_set$converged[[1]] == 1, om_trate_soft_set$condition_no)
+    
+    if (om_trate_soft_set$converged && om_trate_soft_set$safe_condition_no) {
+      soft_trate_set_fit <- fit_linear(train_data=om_trate_soft_set$train_data, test_data=om_trate_soft_set$test_data)
       mse_om_trate_soft <- soft_trate_set_fit$mse
       cov_om_trate_soft <- soft_trate_set_fit$coverage
       mpiw_om_trate_soft <- soft_trate_set_fit$mpiw
+    } else {
+      mse_om_trate_soft <- cov_om_trate_soft <- mpiw_om_trate_soft <- NA
     }
+
   } else {
     mse_om_trate_soft <- cov_om_trate_soft <- mpiw_om_trate_soft <- NA
-    om_trate_soft_set <- list(converged = FALSE)
+    om_trate_soft_conv <- c(0, 0, 0)
   }
 
   # om-slog soft 
-  if (!identical(best_slog_soft_clusts, integer(0))) {
+  if (!is.na(best_slog_soft_clusts)) {
     om_slog_soft_set <- soft_cluster_sim(dists[[3]],
-            set_train_idx, set_test_idx, nClusts=best_slog_soft_clusts, fuzziness = fuzz_soft, y=data_wide[["y"]])
-    if (om_slog_soft_set$converged) {
-      soft_slog_set_fit <- fit_linear(train_data=om_slog_soft_set$train, test_data=om_slog_soft_set$test_data)
+            set_train_idx, set_test_idx, nClusts=best_slog_soft_clusts, fuzziness = fuzz_soft, y=data_wide[["y"]], max_iters = max_soft_iters, 
+          knn_soft_assign=knn_soft_assign, tol=tolerance)
+    
+    om_slog_soft_conv <- c(TRUE, om_slog_soft_set$converged[[1]], om_slog_soft_set$condition_no)
+    
+    if (om_slog_soft_set$converged && om_slog_soft_set$safe_condition_no) {
+      soft_slog_set_fit <- fit_linear(train_data=om_slog_soft_set$train_data, test_data=om_slog_soft_set$test_data)
       mse_om_slog_soft <- soft_slog_set_fit$mse
       cov_om_slog_soft <- soft_slog_set_fit$coverage
       mpiw_om_slog_soft <- soft_slog_set_fit$mpiw
+    } else {
+      mse_om_slog_soft <- cov_om_slog_soft <- mpiw_om_slog_soft <- NA
     }
+
   } else {
     mse_om_slog_soft <- cov_om_slog_soft <- mpiw_om_slog_soft <- NA
-    om_slog_soft_set <- list(converged = FALSE)
+    om_slog_soft_conv <- c(0, 0, 0)
   }
 
 
   # lcs soft
-  if (!identical(best_lcs_soft_clusts, integer(0))) {
+  if (!is.na(best_lcs_soft_clusts)) {
     lcs_soft_set <- soft_cluster_sim(dists[[2]],
-            set_train_idx, set_test_idx, nClusts=best_lcs_soft_clusts, fuzziness = fuzz_soft, y=data_wide[["y"]])
-    if (lcs_soft_set$converged) {
-      soft_lcs_set_fit <- fit_linear(train_data=lcs_soft_set$train, test_data=lcs_soft_set$test_data)
+            set_train_idx, set_test_idx, nClusts=best_lcs_soft_clusts, fuzziness = fuzz_soft, y=data_wide[["y"]], max_iters = max_soft_iters, 
+          knn_soft_assign=knn_soft_assign, tol=tolerance)
+    
+    lcs_soft_conv <- c(TRUE, lcs_soft_set$converged[[1]], lcs_soft_set$condition_no)
+    
+    if (lcs_soft_set$converged && lcs_soft_set$safe_condition_no) {
+      soft_lcs_set_fit <- fit_linear(train_data=lcs_soft_set$train_data, test_data=lcs_soft_set$test_data)
       mse_lcs_soft <- soft_lcs_set_fit$mse
       cov_lcs_soft <- soft_lcs_set_fit$coverage
       mpiw_lcs_soft <- soft_lcs_set_fit$mpiw
+    } else {
+      mse_lcs_soft <- cov_lcs_soft <- mpiw_lcs_soft <- NA
     }
   } else {
     mse_lcs_soft <- cov_lcs_soft <- mpiw_lcs_soft <- NA
-    lcs_soft_set <- list(converged = FALSE)
+    lcs_soft_conv <- c(0, 0, 0)
   }
 
 
@@ -477,7 +498,7 @@ results <- foreach(m = 1:nrow(task_grid), .packages = c("tidyverse", "cluster", 
   mpiw_wind <- wind_fit$mpiw
   
 # return section (for this one file-set combination)
-list(
+result <- list(
       sim_group = sim_group,
       set_idx = n,
       mses = c(mse_cfda, mse_wind, mse_om_trate_hard, mse_om_slog_hard, mse_lcs_hard, mse_om_trate_soft, 
@@ -490,9 +511,9 @@ list(
         best_lcs_hard_clusts, best_trate_soft_clusts,best_slog_soft_clusts, best_lcs_soft_clusts), 
       set_conv_train_track = set_conv_train_track,
       set_conv_test_track = list(
-        om_trate = om_trate_soft_set$converged, 
-        om_slog = om_slog_soft_set$converged,
-        lcs = lcs_soft_set$converged)
+        om_trate = om_trate_soft_conv, 
+        om_slog =  om_slog_soft_conv,
+        lcs = lcs_soft_conv)
     )
 }
 
@@ -514,54 +535,15 @@ for(result in results) {
 }
 
 
-method_names <- c("CFDA", "Windows", "OM-Trate (Hard)","OM-SLOG (Hard)", 
-  "LCS (Hard)", "OM-Trate (Soft)","OM-SLOG (Soft)", "LCS (Soft)")
-
-# Have to limit the data such that we make sure there is no issue with the 
-# summarizing 
-# should also report somewhere how many of each of the soft clustering are actually calculated in the average 
-
-# Transform the list and map the names
-plot_data <- map_df(names(mse.sims), function(name) {
-  matrix_data <- mse.sims[[name]]
-  
-  # Calculate row means - only works with n > 1
-  row_means <- sqrt(rowMeans(matrix_data))
-  
-  # Create the data frame
-  tibble(
-    Method = factor(method_names, levels = method_names), # Keeps them in your specific order
-    Mean_MSE = row_means,
-    Simulation_Type = name
-  )
-})
-
-
-
-# Create the plot
-plot_name <- paste0(sim_type, "plot.pdf")
-  
-pdf(plot_name,width=9,height=7)
-ggplot(plot_data, aes(x = Method, y = Mean_MSE, color = Simulation_Type, group = Simulation_Type)) +
-  geom_line(size = 1.2) +
-  geom_point(size = 3) +
-  theme_minimal(base_size = 14) + # Makes text a bit more readable
-  labs(
-    title = "Mean RMSE per Method - Hard Difficulty",
-    x = "Method",
-    y = "Average RMSE (of Best Number of Components)",
-    color = "Simulation Type"
-  ) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) # Tilts labels if names are long
-dev.off()
+full_results <- list()
+full_results$mse <- mse.sims
+full_results$cov <- cov.sims
+full_results$mpiw <- mpiw.sims
+full_results$best_n_comps <- best_n_comps
+full_results$train_conv_tracker <- train_conv_tracker
+full_results$test_conv_tracker <- test_conv_tracker
 
 # Save data from full run 
-saveRDS(mse.sims, paste0(sim_type,"_full_mses.rds"))
-saveRDS(cov.sims, paste0(sim_type,"_full_coverages.rds"))
-saveRDS(mpiw.sims, paste0(sim_type,"_full_mpiws.rds"))
-saveRDS(best_n_comps, paste0(sim_type,"_best_n_comps.rds"))
-saveRDS(train_conv_tracker, paste0(sim_type, "_train_conv_tracker.rds"))
-saveRDS(plot_data, paste0(sim_type, "_RMSE_performance.rds"))
-saveRDS(test_conv_tracker, paste0(sim_type, "_test_conv_tracker.rds"))
+saveRDS(full_results, paste0(sim_type,"_results.rds"))
 
 stopCluster(cl)
